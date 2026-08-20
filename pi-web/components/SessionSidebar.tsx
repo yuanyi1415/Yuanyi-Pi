@@ -885,13 +885,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [onSelectSession]);
 
   const handleNewSession = useCallback(() => {
-    if (!selectedCwd) return;
+    // 一期：允许无项目新建（cwd=""，Gateway 模式 projectDirectory=null）
     // Generate a temporary UUID client-side — no backend call needed.
     // Pi will be spawned lazily when the user sends the first message.
     const tempId = typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-    onNewSession?.(tempId, selectedCwd);
+    onNewSession?.(tempId, selectedCwd ?? "");
   }, [selectedCwd, onNewSession]);
 
   const recentProjects = getRecentProjects(allSessions);
@@ -1635,25 +1635,55 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             {t("sidebar.noSessions")}
           </div>
         )}
-        {sessionTree.map((node) => (
-          <SessionTreeItem
-            key={node.session.id}
-            node={node}
-            selectedSessionId={selectedSessionId}
-            runningSessionIds={runningSessionIds}
-            unreadSessionIds={unreadSessionIds}
-            onSelectSession={handleSelectSessionFromList}
-            onRenamed={loadSessions}
-            onSessionDeleted={(id) => {
-              onSessionDeleted?.(id);
-              loadSessions();
-            }}
-            depth={0}
-          />
-        ))}
+        {(() => {
+          // DEV322：无项目会话分区位于项目目录分区之上
+          const noProjectNodes = sessionTree.filter((n) => !n.session.cwd);
+          const projectNodes = sessionTree.filter((n) => !!n.session.cwd);
+          return (
+            <>
+              {noProjectNodes.length > 0 && (
+                <>
+                  <div style={{ padding: "8px 14px 2px", fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>
+                    {t("sidebar.noProjectSessions")}
+                  </div>
+                  {noProjectNodes.map((node) => (
+                    <SessionTreeItem
+                      key={node.session.id}
+                      node={node}
+                      selectedSessionId={selectedSessionId}
+                      runningSessionIds={runningSessionIds}
+                      unreadSessionIds={unreadSessionIds}
+                      onSelectSession={handleSelectSessionFromList}
+                      onRenamed={loadSessions}
+                      onSessionDeleted={(id) => {
+                        onSessionDeleted?.(id);
+                        loadSessions();
+                      }}
+                      depth={0}
+                    />
+                  ))}
+                </>
+              )}
+              {projectNodes.map((node) => (
+                <SessionTreeItem
+                  key={node.session.id}
+                  node={node}
+                  selectedSessionId={selectedSessionId}
+                  runningSessionIds={runningSessionIds}
+                  unreadSessionIds={unreadSessionIds}
+                  onSelectSession={handleSelectSessionFromList}
+                  onRenamed={loadSessions}
+                  onSessionDeleted={(id) => {
+                    onSessionDeleted?.(id);
+                    loadSessions();
+                  }}
+                  depth={0}
+                />
+              ))}
+            </>
+          );
+        })()}
       </div>
-
-      {/* File Explorer section */}
       {(selectedCwdProp || selectedCwd) && (
         <div
           style={{
