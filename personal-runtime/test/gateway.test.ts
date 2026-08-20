@@ -18,6 +18,7 @@ import { createGatewayServer } from "../src/server/gateway";
 
 let server: Server;
 let base: string;
+let sessionDir: string;
 
 function makeSessionFile(cwd: string, sessionDir: string): { sessionFile: string; sessionId: string } {
   const sm = SessionManager.create(cwd, sessionDir);
@@ -29,7 +30,7 @@ function makeSessionFile(cwd: string, sessionDir: string): { sessionFile: string
 before(async () => {
   const cwd = mkdtempSync(join(tmpdir(), "gw-cwd-"));
   const agentDir = mkdtempSync(join(tmpdir(), "gw-agent-"));
-  const sessionDir = mkdtempSync(join(tmpdir(), "gw-sess-"));
+  sessionDir = mkdtempSync(join(tmpdir(), "gw-sess-"));
   const metadataFile = join(mkdtempSync(join(tmpdir(), "gw-meta-")), "metadata.json");
 
   const metadata = new MetadataStore(metadataFile);
@@ -82,11 +83,34 @@ test("POST commands get_state 返回 runtime 状态", async () => {
   assert.equal(json.state, "ready");
 });
 
-test("GET /v1/sessions/{id}/events：runtime 未激活时 409", async () => {
-  // 用一个不存在的 sessionId
+test("GET /v1/sessions/{id}/events：不存在的 Session → 404", async () => {
   const { status, json } = await api("GET", "/v1/sessions/no-such-id/events");
-  assert.equal(status, 409);
-  assert.equal(json.error, "runtime_not_active");
+  assert.equal(status, 404);
+  assert.equal(json.error, "session_not_found");
+});
+
+test("GET /v1/sessions/{id}/events：已落盘未激活 Session 懒恢复 → 200 + 初始快照", async () => {
+  // 构造真实已落盘 Session（runtime 未激活），模拟 gateway 重启后前端先连事件流的场景
+  const cwd = mkdtempSync(join(tmpdir(), "gw-evt-cwd-"));
+  const { sessionId } = makeSessionFile(cwd, sessionDir);
+
+  const controller = new AbortController();
+  const res = await fetch(base + `/v1/sessions/${sessionId}/events`, {
+    signal: controller.signal,
+  });
+  // SSE 长连接：headers 就绪即证明懒恢复成功（旧行为在此返回 409）
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /text\/event-stream/);
+  // 读第一块验证初始快照（state 事件）能到达
+  const reader = res.body!.getReader();
+  const first = await Promise.race([
+    reader.read().then((r) => new TextDecoder().decode(r.value ?? new Uint8Array())),
+    new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("SSE 初始快照超时")), 3000),
+    ),
+  ]);
+  assert.ok(first.includes("data:"), `初始快照应含 data: 事件，实际: ${JSON.stringify(first)}`);
+  controller.abort();
 });
 
 test("未知路由 404", async () => {

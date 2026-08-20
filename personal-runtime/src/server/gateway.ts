@@ -79,7 +79,13 @@ export class Gateway {
       }
 
       if (req.method === "GET" && eventMatch) {
-        return this.streamEvents(req, res, eventMatch[1]);
+        const sessionId = eventMatch[1];
+        // Runtime 未激活时先恢复（与 commands 端点一致）：前端协议是先连事件流再发命令，
+        // 若不恢复则历史 Session 的 SSE 会 409 → 前端误报 "Failed to connect to Personal Gateway"
+        if (!this.runtimeManager.get(sessionId)) {
+          await this.router.resolve({ type: "existing", sessionId });
+        }
+        return this.streamEvents(req, res, sessionId);
       }
 
       if (req.method === "GET" && path === "/v1/channels/wechat/config") {

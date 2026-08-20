@@ -57,14 +57,25 @@ test("resume: 从已落盘 sessionFile 恢复，sessionId 不变", async () => {
   await resumed.dispose();
 });
 
-test("setThinkingLevel: 生效并可在 getState 读回", async () => {
+test("setThinkingLevel: 返回实际生效值且 getState 读回一致（SDK 按模型能力 clamp）", async () => {
   const cwd = makeTmpDir("yuanyi-cwd-");
   const agentDir = makeTmpDir("yuanyi-agent-");
   const adapter = await PiRuntimeAdapter.create({ cwd, agentDir });
 
-  await adapter.setThinkingLevel("high");
+  const effective = await adapter.setThinkingLevel("high");
   const state = await adapter.getState();
-  assert.equal(state.thinkingLevel, "high");
+  assert.equal(state.thinkingLevel, effective, "getState 读回应与 set 返回的实际生效值一致");
+  assert.ok(
+    ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(effective),
+    `实际生效值应为合法级别，得到: ${effective}`,
+  );
+
+  // sendCommand 路径同样返回实际生效值（产品层可见降级）
+  const cmdResult = await adapter.sendCommand({
+    type: "set_thinking_level",
+    level: "high",
+  }) as { level?: string };
+  assert.equal(cmdResult.level, effective);
 
   await adapter.dispose();
 });

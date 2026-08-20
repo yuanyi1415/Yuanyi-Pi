@@ -171,9 +171,10 @@ export class PiRuntimeAdapter {
       case "set_model":
         await this.setModel(command.model);
         return { ok: true };
-      case "set_thinking_level":
-        await this.setThinkingLevel(command.level);
-        return { ok: true };
+      case "set_thinking_level": {
+        const level = await this.setThinkingLevel(command.level);
+        return { ok: true, level };
+      }
       case "set_tools":
         this.inner.setActiveToolsByName(command.toolNames);
         return { ok: true };
@@ -205,9 +206,14 @@ export class PiRuntimeAdapter {
     await this.inner.setModel(resolveModel(this.modelRuntime, model));
   }
 
-  async setThinkingLevel(level: ThinkingLevel): Promise<void> {
+  /**
+   * 请求设置 thinking 级别，返回 SDK 按当前模型能力 clamp 后的实际生效值。
+   * （不静默：调用方以返回值为准，产品层可展示真实生效级别）
+   */
+  async setThinkingLevel(level: ThinkingLevel): Promise<ThinkingLevel> {
     this.assertAlive();
     this.inner.setThinkingLevel(level);
+    return this.inner.thinkingLevel;
   }
 
   async dispose(): Promise<void> {
