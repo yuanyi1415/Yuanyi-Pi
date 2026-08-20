@@ -19,7 +19,8 @@ start() {
     return 0
   fi
   cd "$APP_DIR"
-  nohup npm start > "$LOG_FILE" 2>&1 &
+  # 生产启用 Personal Gateway 模式（Web 不再自持 AgentSession）；强制端口 30141（package.json 为 dev 端口 30142）
+  PERSONAL_GATEWAY_ENABLED=1 nohup npm start -- -H 127.0.0.1 -p 30141 > "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
   sleep 3
   if kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
