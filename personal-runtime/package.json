@@ -1,0 +1,26 @@
+{
+  "name": "@yuanyi-pi/personal-runtime",
+  "version": "0.1.0",
+  "description": "Pi Personal 一期 Personal Runtime：Gateway / Session Router / Runtime Manager / PiRuntimeAdapter / Channel",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

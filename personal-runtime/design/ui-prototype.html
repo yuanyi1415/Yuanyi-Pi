@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Personal UI 原型 — 渠道面板 + 设置入口</title>
+<style>
+/* ===== pi-web 主题变量（同 globals.css）===== */
+:root {
+  --bg: #ffffff; --bg-panel: #f5f5f5; --bg-hover: #eeeeee; --bg-selected: #e8e8e8;
+  --border: #e0e0e0; --text: #1a1a1a; --text-muted: #6b7280; --text-dim: #9ca3af;
+  --accent: #2563eb; --accent-hover: #1d4ed8; --bg-subtle: rgba(0,0,0,0.03);
+}
+html.dark {
+  --bg: #1a1a1a; --bg-panel: #242424; --bg-hover: #2e2e2e; --bg-selected: #3a3a3a;
+  --border: #3a3a3a; --text: #f5f5f5; --text-muted: #a1a1aa; --text-dim: #71717a;
+  --accent: #3b82f6; --accent-hover: #60a5fa; --bg-subtle: rgba(255,255,255,0.05);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh;
+  display: flex; flex-direction: column;
+  transition: background .2s, color .2s;
+}
+/* ===== 顶部模拟条（说明用）===== */
+.topbar { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+.topbar h1 { font-size: 14px; font-weight: 600; }
+.topbar .hint { font-size: 12px; color: var(--text-muted); }
+.theme-toggle { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.switch { width: 34px; height: 20px; border-radius: 999px; background: var(--border); position: relative; cursor: pointer; border: none; transition: background .2s; }
+.switch.on { background: var(--accent); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .2s; }
+.switch.on::after { left: 16px; }
+
+/* ===== 主区：模拟 pi-web 布局 ===== */
+.main { flex: 1; display: flex; min-height: 0; }
+.sidebar { width: 240px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-panel); }
+.sidebar-body { flex: 1; overflow: auto; }
+.sidebar-empty { padding: 20px 14px; font-size: 12px; color: var(--text-dim); }
+.chat { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 13px; }
+
+/* ===== 设置按钮（左下角，FR-103）===== */
+.settings-bar { padding: 8px; border-top: 1px solid var(--border); position: relative; }
+.settings-btn {
+  width: 100%; display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text); font-size: 12px;
+  transition: background .15s;
+}
+.settings-btn:hover { background: var(--bg-hover); }
+.settings-btn svg { width: 14px; height: 14px; }
+
+/* ===== 向上弹出菜单 ===== */
+.popup {
+  position: absolute; bottom: calc(100% + 4px); left: 8px; right: 8px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.10); padding: 4px; z-index: 100;
+  display: none;
+}
+.popup.open { display: block; }
+.popup-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border: none; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text); font-size: 12px; text-align: left;
+  transition: background .15s;
+}
+.popup-item:hover { background: var(--bg-hover); }
+.popup-item.disabled { color: var(--text-dim); cursor: not-allowed; }
+.popup-item.disabled:hover { background: transparent; }
+.popup-item svg { width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0; }
+.popup-item.channel svg { color: #07C160; }
+
+/* ===== 渠道弹窗（FR-102）===== */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200;
+  display: none; align-items: flex-start; justify-content: center; padding: 8vh 20px 20px;
+}
+.modal-mask.open { display: flex; }
+.modal {
+  width: 420px; max-width: 100%; max-height: 84vh; overflow: auto;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.modal-head span { font-size: 14px; font-weight: 600; }
+.modal-close { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 4px; transition: background .15s; }
+.modal-close:hover { background: var(--bg-hover); color: var(--text); }
+.modal-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+/* 微信卡片 */
+.channel-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+}
+.channel-logo { width: 40px; height: 40px; border-radius: 12px; background: #07C160; display: grid; place-items: center; flex-shrink: 0; }
+.channel-logo svg { width: 22px; height: 22px; fill: #fff; }
+.channel-info { flex: 1; min-width: 0; }
+.channel-name { font-size: 14px; font-weight: 600; }
+.channel-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+.channel-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* 状态徽章 */
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+.badge.on { background: rgba(34,197,94,0.12); color: #16a34a; }
+.badge.on .dot { background: #22c55e; }
+.badge.connecting { background: rgba(37,99,235,0.10); color: var(--accent); }
+.badge.connecting .dot { background: var(--accent); animation: pulse 1.2s infinite; }
+.badge.off { background: var(--bg-subtle); color: var(--text-muted); }
+.badge.off .dot { background: var(--text-dim); }
+.badge.error { background: rgba(239,68,68,0.10); color: #dc2626; }
+.badge.error .dot { background: #ef4444; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* 按钮 */
+.btn { border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; padding: 7px 14px; transition: background .15s, opacity .15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg-hover); }
+.btn-danger { background: transparent; color: #dc2626; border: 1px solid rgba(239,68,68,0.35); }
+.btn-danger:hover { background: rgba(239,68,68,0.08); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 二维码区 */
+.qr-box { display: flex; flex-direction: column; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+.qr-box .qr-title { font-size: 13px; font-weight: 600; }
+.qr-box .qr-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.qr-canvas { width: 200px; height: 200px; background: #fff; border: 1px solid var(--border); border-radius: 8px; display: grid; place-items: center; overflow: hidden; }
+.qr-canvas svg { width: 100%; height: 100%; }
+.qr-actions { display: flex; gap: 8px; }
+
+/* 验证码 */
+.verify-form { display: flex; gap: 8px; align-items: center; }
+.verify-input { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 13px; outline: none; }
+.verify-input:focus { border-color: var(--accent); }
+
+/* 基础配置折叠 */
+details.config { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); padding: 12px; }
+details.config summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; gap: 6px; }
+details.config summary::before { content: "▸"; color: var(--text-dim); font-size: 11px; transition: transform .15s; }
+details.config[open] summary::before { transform: rotate(90deg); }
+.config-body { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.config-label { font-size: 11px; color: var(--text-muted); }
+.config-input { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 12px; outline: none; font-family: var(--font-mono, monospace); }
+.config-input:focus { border-color: var(--accent); }
+.config-hint { font-size: 11px; color: var(--text-dim); }
+
+/* 保存反馈 */
+.save-status { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 11px; color: var(--text-muted); min-height: 18px; }
+.save-status.saved { color: #16a34a; }
+</style>
+</head>
+<body>
+
+<!-- 顶部说明条 -->
+<div class="topbar">
+  <h1>Pi Personal — UI 原型</h1>
+  <span class="hint">渠道面板 + 左下角设置入口（FR-102 / FR-103）</span>
+  <div class="theme-toggle">
+    <span>暗色</span>
+    <button class="switch" id="themeSwitch" onclick="toggleTheme()" aria-label="切换主题"></button>
+  </div>
+</div>
+
+<!-- 主区：模拟 pi-web 布局 -->
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-body">
+      <div class="sidebar-empty">（模拟 pi-web 会话侧栏）</div>
+    </div>
+    <!-- ===== 左下角设置（FR-103）===== -->
+    <div class="settings-bar">
+      <div class="popup" id="settingsPopup">
+        <button class="popup-item" onclick="alert('模型（原逻辑）')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+          模型
+        </button>
+        <button class="popup-item" onclick="alert('技能（原逻辑，无项目时禁用）')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          技能
+        </button>
+        <button class="popup-item" onclick="alert('插件（原逻辑，无项目时禁用）')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 7V2"/><path d="M15 7V2"/><path d="M6 13V8a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5a6 6 0 0 1-12 0Z"/><path d="M12 19v3"/></svg>
+          插件
+        </button>
+        <button class="popup-item channel" onclick="openChannel()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6"/><path d="M12 6v12"/><rect x="3" y="4" width="18" height="16" rx="3"/></svg>
+          渠道
+        </button>
+      </div>
+      <button class="settings-btn" id="settingsBtn" onclick="toggleSettings()" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        设置
+      </button>
+    </div>
+  </div>
+  <div class="chat">（模拟聊天区）</div>
+</div>
+
+<!-- ===== 渠道弹窗（FR-102）===== -->
+<div class="modal-mask" id="channelModal" onclick="if(event.target===this)closeChannel()">
+  <div class="modal">
+    <div class="modal-head"><span>渠道</span><button class="modal-close" onclick="closeChannel()" aria-label="关闭">×</button></div>
+    <div class="modal-body">
+
+      <!-- 微信卡片 -->
+      <div class="channel-card">
+        <div class="channel-logo">
+          <svg viewBox="0 0 24 24"><path d="M9.5 3C5.4 3 2 5.8 2 9.3c0 2 1.1 3.7 2.9 4.9l-.7 2.1 2.4-1.2c.7.2 1.5.3 2.4.3h.4a5 5 0 0 1-.2-1.4c0-3 2.9-5.4 6.4-5.4h.4C15.4 5.2 12.8 3 9.5 3zm-2.4 4a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zm4.8 0a.9.9 0 1 1 0 1.8.9.9 0 0 1 0-1.8zM15 11c-3 0-5.4 2-5.4 4.4 0 2.4 2.4 4.4 5.4 4.4.7 0 1.4-.1 2-.3l2 1-.5-1.7c1.4-.9 2.3-2.2 2.3-3.6 0-2.4-2.4-4.2-5.8-4.2zm-2 2.7a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6zm4 0a.8.8 0 1 1 0 1.6.8.8 0 0 1 0-1.6z"/></svg>
+        </div>
+        <div class="channel-info">
+          <div class="channel-name">微信</div>
+          <div class="channel-desc">在微信中与 Personal Agent 对话。连接后，微信私聊消息将进入统一会话。</div>
+        </div>
+        <div class="channel-actions">
+          <span class="badge on" id="wxBadge"><span class="dot"></span>已连接</span>
+        </div>
+      </div>
+
+      <!-- 状态切换（原型演示用）-->
+      <div style="display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-dim)">
+        <span>原型演示状态：</span>
+        <button class="btn btn-ghost" style="padding:4px 10px" onclick="setState('on')">已连接</button>
+        <button class="btn btn-ghost" style="padding:4px 10px" onclick="setState('off')">未连接</button>
+        <button class="btn btn-ghost" style="padding:4px 10px" onclick="setState('connecting')">连接中</button>
+        <button class="btn btn-ghost" style="padding:4px 10px" onclick="setState('error')">已失效</button>
+      </div>
+
+      <!-- 二维码区（未连接/连接中/需验证码时显示）-->
+      <div class="qr-box" id="qrBox" style="display:none">
+        <div class="qr-title">用手机微信扫码连接</div>
+        <div class="qr-canvas" id="qrCanvas">
+          <!-- 二维码占位：用简单网格模拟 -->
+          <svg viewBox="0 0 100 100" style="background:#fff">
+            <g fill="#111">
+              <rect x="5" y="5" width="30" height="30" rx="3" fill="none" stroke="#111" stroke-width="4"/>
+              <rect x="65" y="5" width="30" height="30" rx="3" fill="none" stroke="#111" stroke-width="4"/>
+              <rect x="5" y="65" width="30" height="30" rx="3" fill="none" stroke="#111" stroke-width="4"/>
+              <path d="M12 12h6v6h-6zM78 12h6v6h-6zM12 78h6v6h-6zM45 12h8v8h-8zM58 45h8v8h-8zM45 78h8v8h-8zM70 45h6v6h-6zM45 58h6v6h-6zM78 55h6v6h-6zM20 45h6v6h-6zM55 78h6v6h-6zM60 60h10v6H60zM72 22h8v8h-8zM38 60h5v5h-5zM50 30h6v6h-6zM28 45h6v6h-6z"/>
+            </g>
+          </svg>
+        </div>
+        <div class="qr-status" id="qrStatus"><span class="spinner"></span>等待扫码…</div>
+        <div class="verify-form" id="verifyForm" style="display:none">
+          <input class="verify-input" type="text" inputmode="numeric" placeholder="输入微信显示的验证码">
+          <button class="btn btn-primary" onclick="alert('验证（原型）')">验证</button>
+        </div>
+        <div class="qr-actions" id="qrActions" style="display:none">
+          <button class="btn btn-ghost" onclick="setState('connecting')">刷新二维码</button>
+        </div>
+      </div>
+
+      <!-- 已连接时的操作 -->
+      <div id="connectedActions" style="display:flex;justify-content:flex-end">
+        <button class="btn btn-danger" onclick="alert('断开连接（原型）')">断开连接</button>
+      </div>
+
+      <!-- 主设置 -->
+      <div style="display:flex;flex-direction:column;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div style="min-width:0">
+            <div style="font-size:12px;font-weight:600">授权联系人</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5">仅指定联系人可对话，留空 = 全部接受</div>
+          </div>
+          <input class="config-input" style="width:180px;flex-shrink:0" placeholder="wxid_xxx, wxid_yyy">
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div style="min-width:0">
+            <div style="font-size:12px;font-weight:600">处理中提示</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5">Agent 处理消息时微信显示"正在输入"与进度提示</div>
+          </div>
+          <button class="switch on" onclick="this.classList.toggle('on')" aria-label="处理中提示开关"></button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+          <div style="min-width:0">
+            <div style="font-size:12px;font-weight:600">工具提示</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5">Agent 调用工具（读文件/执行命令）时显示"正在使用工具…"</div>
+          </div>
+          <button class="switch on" onclick="this.classList.toggle('on')" aria-label="工具提示开关"></button>
+        </div>
+      </div>
+
+      <!-- 高级设置 -->
+      <details class="config" open>
+        <summary>高级设置</summary>
+        <div class="config-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600">结构化进度</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5">工具开始 / 完成 / 失败时发送状态消息</div>
+            </div>
+            <button class="switch on" onclick="this.classList.toggle('on')" aria-label="结构化进度开关"></button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600">结构化进度上限</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">单次对话最多发送条数</div>
+            </div>
+            <input class="config-input" type="number" style="width:64px;flex-shrink:0" value="2" min="0" max="4">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600">分块发送回复</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.5">长回复生成中分段送达，无需等全部完成</div>
+            </div>
+            <button class="switch on" onclick="this.classList.toggle('on')" aria-label="分块发送开关"></button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600">最小分块字符数</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">达到该长度才触发分块（200-1800）</div>
+            </div>
+            <input class="config-input" type="number" style="width:70px;flex-shrink:0" value="1200" min="200" max="1800">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div>
+              <div style="font-size:12px;font-weight:600">分块消息上限</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px">中途分块最多条数（1-4）</div>
+            </div>
+            <input class="config-input" type="number" style="width:64px;flex-shrink:0" value="3" min="1" max="4">
+          </div>
+        </div>
+      </details>
+
+      <div class="save-status" id="saveStatus"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme() {
+  document.documentElement.classList.toggle('dark');
+  document.getElementById('themeSwitch').classList.toggle('on');
+}
+document.getElementById('themeSwitch').classList.add('on');
+document.documentElement.classList.add('dark');
+
+function toggleSettings() {
+  const popup = document.getElementById('settingsPopup');
+  const btn = document.getElementById('settingsBtn');
+  popup.classList.toggle('open');
+  btn.setAttribute('aria-expanded', popup.classList.contains('open'));
+}
+document.addEventListener('click', (e) => {
+  const popup = document.getElementById('settingsPopup');
+  const btn = document.getElementById('settingsBtn');
+  if (!popup.contains(e.target) && e.target !== btn && !btn.contains(e.target)) popup.classList.remove('open');
+});
+
+function openChannel() {
+  document.getElementById('settingsPopup').classList.remove('open');
+  document.getElementById('channelModal').classList.add('open');
+}
+function closeChannel() { document.getElementById('channelModal').classList.remove('open'); }
+
+function setState(state) {
+  const badge = document.getElementById('wxBadge');
+  const qrBox = document.getElementById('qrBox');
+  const qrStatus = document.getElementById('qrStatus');
+  const verifyForm = document.getElementById('verifyForm');
+  const qrActions = document.getElementById('qrActions');
+  const connected = document.getElementById('connectedActions');
+  badge.className = 'badge ' + (state === 'on' ? 'on' : state === 'connecting' ? 'connecting' : state === 'error' ? 'error' : 'off');
+  badge.innerHTML = '<span class="dot"></span>' +
+    (state === 'on' ? '已连接' : state === 'connecting' ? '连接中…' : state === 'error' ? '已失效，请重新扫码' : '未连接');
+  if (state === 'on') {
+    qrBox.style.display = 'none';
+    connected.style.display = 'flex';
+  } else {
+    qrBox.style.display = 'flex';
+    connected.style.display = 'none';
+    verifyForm.style.display = 'none';
+    qrActions.style.display = 'none';
+    if (state === 'connecting') qrStatus.innerHTML = '<span class="spinner"></span>等待扫码…';
+    else if (state === 'off') qrStatus.innerHTML = '<span class="spinner"></span>等待扫码…';
+    else if (state === 'error') {
+      qrStatus.innerHTML = '登录已过期，请重新扫码';
+      qrActions.style.display = 'flex';
+    }
+  }
+}
+</script>
+</body>
+</html>
