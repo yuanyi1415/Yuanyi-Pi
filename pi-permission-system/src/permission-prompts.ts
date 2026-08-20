@@ -30,7 +30,7 @@ export function hasStructuredEditPayload(inputRecord: Record<string, unknown>): 
 }
 
 export function formatMissingToolNameReason(): string {
-  return "Tool call was blocked because no tool name was provided. Use a registered tool name from pi.getAllTools().";
+  return "工具调用因未提供工具名而被拦截。请使用 pi.getAllTools() 中已注册的工具名。";
 }
 
 export function formatUnknownToolReason(toolName: string, availableToolNames: readonly string[]): string {
@@ -40,17 +40,17 @@ export function formatUnknownToolReason(toolName: string, availableToolNames: re
 
   const mcpHint = toolName === "mcp"
     ? ""
-    : " If this was intended as an MCP server tool, call the registered 'mcp' tool when available (for example: {\"tool\":\"server:tool\"}).";
+    : " 若本意是调用 MCP 服务器工具，请在可用时调用已注册的 'mcp' 工具（例如：{\"tool\":\"server:tool\"}）。";
 
-  return `Tool '${toolName}' is not registered in this runtime and was blocked before permission checks.${mcpHint} Registered tools: ${availableList}.`;
+  return `工具 '${toolName}' 未在此运行环境中注册，已在权限检查前被拦截。${mcpHint}已注册工具：${availableList}。`;
 }
 
 function formatPermissionHardStopHint(result: PermissionCheckResult): string {
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {
-    return "Hard stop: this MCP permission denial is policy-enforced. Do not retry this target, do not run discovery/investigation to bypass it, and report the block to the user.";
+    return "硬性拦截：此 MCP 权限拒绝由策略强制执行。不要重试该目标，不要尝试发现/绕过，并向用户报告此拦截。";
   }
 
-  return "Hard stop: this permission denial is policy-enforced. Do not retry or investigate bypasses; report the block to the user.";
+  return "硬性拦截：此权限拒绝由策略强制执行。不要重试或尝试绕过，并向用户报告此拦截。";
 }
 
 export function formatDenyReason(result: PermissionCheckResult, agentName?: string): string {
@@ -61,34 +61,34 @@ export function formatDenyReason(result: PermissionCheckResult, agentName?: stri
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {
-    parts.push(`is not permitted to run MCP target '${result.target}'`);
+    parts.push(`未被允许运行 MCP 目标 '${result.target}'`);
   } else {
-    parts.push(`is not permitted to run '${result.toolName}'`);
+    parts.push(`未被允许运行 '${result.toolName}'`);
   }
 
   if (result.command) {
-    parts.push(`command '${result.command}'`);
+    parts.push(`命令 '${result.command}'`);
   }
 
   const deniedUnit = result.bashChecks?.find((check) => check.state === "deny");
   if (deniedUnit && deniedUnit.command !== result.command) {
-    parts.push(`because unit '${deniedUnit.command}' is denied`);
+    parts.push(`因为单元 '${deniedUnit.command}' 已被拒绝`);
   }
 
   if (result.matchedPattern) {
-    parts.push(`(matched '${result.matchedPattern}')`);
+    parts.push(`(匹配 '${result.matchedPattern}')`);
   }
 
-  return `${parts.join(" ")}. ${formatPermissionHardStopHint(result)}`;
+  return `${parts.join(" ")}。 ${formatPermissionHardStopHint(result)}`;
 }
 
 export function formatUserDeniedReason(result: PermissionCheckResult, denialReason?: string): string {
   const base = (result.source === "mcp" || result.toolName === "mcp") && result.target
-    ? `User denied MCP target '${result.target}'.`
+    ? `用户拒绝了 MCP 目标 '${result.target}'。`
     : result.toolName === "bash" && result.command
-      ? `User denied bash command '${result.command}'.`
-      : `User denied tool '${result.toolName}'.`;
-  const reasonSuffix = denialReason ? ` Reason: ${denialReason}.` : "";
+      ? `用户拒绝了 bash 命令 '${result.command}'。`
+      : `用户拒绝了工具 '${result.toolName}'。`;
+  const reasonSuffix = denialReason ? ` 原因：${denialReason}。` : "";
 
   return `${base}${reasonSuffix} ${formatPermissionHardStopHint(result)}`;
 }
@@ -131,38 +131,38 @@ function countEditPayloadLines(value: unknown): number {
 function formatEditReference(value: unknown): string {
   return typeof value === "string" && value.trim()
     ? sanitizeInlineText(value, 40)
-    : "anchor";
+    : "锚点";
 }
 
 function formatEditReferenceRange(edit: Record<string, unknown>): string {
   const start = formatEditReference(edit.pos);
   const end = typeof edit.end === "string" && edit.end.trim()
-    ? ` through ${formatEditReference(edit.end)}`
+    ? ` 到 ${formatEditReference(edit.end)}`
     : "";
   return `${start}${end}`;
 }
 
 function formatStructuredEditSummary(edit: Record<string, unknown>, index: number): string | null {
-  const ordinal = `edit #${index + 1}`;
+  const ordinal = `编辑 #${index + 1}`;
   const op = typeof edit.op === "string" ? edit.op : "replace_text";
 
   if (typeof edit.oldText === "string" && typeof edit.newText === "string" && op === "replace_text") {
-    return `${ordinal} replaces ${formatCount(countTextLines(edit.oldText), "line", "lines")} with ${formatCount(countTextLines(edit.newText), "line", "lines")}`;
+    return `${ordinal} 用 ${formatCount(countTextLines(edit.oldText), "行", "行")} 替换 ${formatCount(countTextLines(edit.newText), "行", "行")}`;
   }
 
-  const lineCount = formatCount(countEditPayloadLines(edit.lines), "line", "lines");
+  const lineCount = formatCount(countEditPayloadLines(edit.lines), "行", "行");
   switch (op) {
     case "replace": {
       const refRange = formatEditReferenceRange(edit);
-      return `${ordinal} replaces ${lineCount} at ${refRange}`;
+      return `${ordinal} 在 ${refRange} 替换 ${lineCount}`;
     }
     case "append":
-      return `${ordinal} appends ${lineCount}${typeof edit.pos === "string" ? ` after ${formatEditReference(edit.pos)}` : " at EOF"}`;
+      return `${ordinal} 追加 ${lineCount}${typeof edit.pos === "string" ? ` 于 ${formatEditReference(edit.pos)} 之后` : " 于文件末尾"}`;
     case "prepend":
-      return `${ordinal} prepends ${lineCount}${typeof edit.pos === "string" ? ` before ${formatEditReference(edit.pos)}` : " at BOF"}`;
+      return `${ordinal} 插入 ${lineCount}${typeof edit.pos === "string" ? ` 于 ${formatEditReference(edit.pos)} 之前` : " 于文件开头"}`;
     case "delete": {
       const refRange = formatEditReferenceRange(edit);
-      return `${ordinal} deletes at ${refRange}`;
+      return `${ordinal} 在 ${refRange} 删除`;
     }
     default:
       return null;
@@ -175,7 +175,7 @@ function formatStructuredEditInputForPrompt(input: Record<string, unknown>, fall
     .map((edit, index) => formatStructuredEditSummary(toRecord(edit), index))
     .filter((summary): summary is string => typeof summary === "string" && summary.length > 0);
 
-  const pathPart = path ? `for '${path}'` : "";
+  const pathPart = path ? `针对 '${path}'` : "";
   if (editSummaries.length === 0) {
     if (!fallback) {
       return null;
@@ -183,32 +183,32 @@ function formatStructuredEditInputForPrompt(input: Record<string, unknown>, fall
     return pathPart ? `${pathPart} ${fallback}` : fallback;
   }
 
-  const extraEdits = editSummaries.length > 1 ? `, plus ${formatCount(editSummaries.length - 1, "additional edit", "additional edits")}` : "";
-  const summary = `(${formatCount(editSummaries.length, "edit", "edits")}: ${editSummaries[0]}${extraEdits})`;
+  const extraEdits = editSummaries.length > 1 ? `，另有 ${formatCount(editSummaries.length - 1, "个编辑", "个编辑")}` : "";
+  const summary = `(${formatCount(editSummaries.length, "个编辑", "个编辑")}：${editSummaries[0]}${extraEdits})`;
   return pathPart ? `${pathPart} ${summary}` : summary;
 }
 
 function formatEditInputForPrompt(input: Record<string, unknown>): string {
-  return formatStructuredEditInputForPrompt(input, "with edit input") ?? "with edit input";
+  return formatStructuredEditInputForPrompt(input, "带编辑输入") ?? "带编辑输入";
 }
 
 function formatWriteInputForPrompt(input: Record<string, unknown>): string {
   const path = getPromptPath(input);
   const content = typeof input.content === "string" ? input.content : "";
-  const summary = `(${formatCount(countTextLines(content), "line", "lines")}, ${formatCount(content.length, "character", "characters")})`;
-  return path ? `for '${path}' ${summary}` : summary;
+  const summary = `(${formatCount(countTextLines(content), "行", "行")}，${formatCount(content.length, "个字符", "个字符")})`;
+  return path ? `针对 '${path}' ${summary}` : summary;
 }
 
 function formatReadInputForPrompt(input: Record<string, unknown>): string {
   const path = getPromptPath(input);
-  const parts = path ? [`path '${path}'`] : [];
+  const parts = path ? [`路径 '${path}'`] : [];
   if (typeof input.offset === "number") {
     parts.push(`offset ${input.offset}`);
   }
   if (typeof input.limit === "number") {
     parts.push(`limit ${input.limit}`);
   }
-  return parts.length > 0 ? `for ${parts.join(", ")}` : "";
+  return parts.length > 0 ? `针对 ${parts.join("，")}` : "";
 }
 
 function formatSearchInputForPrompt(toolName: string, input: Record<string, unknown>): string {
@@ -224,12 +224,12 @@ function formatSearchInputForPrompt(toolName: string, input: Record<string, unkn
     parts.push(`glob '${sanitizeInlineText(glob)}'`);
   }
   if (path) {
-    parts.push(`path '${path}'`);
+    parts.push(`路径 '${path}'`);
   } else if (toolName === "find" || toolName === "grep" || toolName === "ls") {
-    parts.push("current working directory");
+    parts.push("当前工作目录");
   }
 
-  return parts.length > 0 ? `for ${parts.join(", ")}` : "";
+  return parts.length > 0 ? `针对 ${parts.join("，")}` : "";
 }
 
 function serializeToolInputPreview(input: unknown): string {
@@ -243,7 +243,7 @@ function serializeToolInputPreview(input: unknown): string {
 
 function formatJsonInputForPrompt(input: unknown): string {
   const inline = serializeToolInputPreview(input);
-  return inline ? `with input ${truncateInlineText(inline, TOOL_INPUT_PREVIEW_MAX_LENGTH)}` : "";
+  return inline ? `带输入 ${truncateInlineText(inline, TOOL_INPUT_PREVIEW_MAX_LENGTH)}` : "";
 }
 
 export function formatToolInputForPrompt(toolName: string, input: unknown): string {
@@ -268,7 +268,7 @@ export function formatToolInputForPrompt(toolName: string, input: unknown): stri
 }
 
 export function formatAgentSubject(agentName?: string): string {
-  return agentName ? `Agent '${agentName}'` : "Current agent";
+  return agentName ? `Agent '${agentName}'` : "当前 Agent";
 }
 
 export function formatAskPrompt(result: PermissionCheckResult, agentName?: string, input?: unknown): string {
@@ -277,37 +277,37 @@ export function formatAskPrompt(result: PermissionCheckResult, agentName?: strin
   if (result.toolName === "bash") {
     const askedUnits = result.bashChecks?.filter((check) => check.state === "ask") ?? [];
     const unitInfo = askedUnits.length > 0
-      ? ` Commands requiring approval: ${askedUnits.map((check) => `'${check.command}'`).join(", ")}.`
+      ? ` 需要审批的命令：${askedUnits.map((check) => `'${check.command}'`).join("，")}。`
       : "";
-    const patternInfo = result.matchedPattern ? ` (matched '${result.matchedPattern}')` : "";
-    return `${subject} requested bash command '${result.command || ""}'${patternInfo}.${unitInfo} Allow this command?`;
+    const patternInfo = result.matchedPattern ? ` (匹配 '${result.matchedPattern}')` : "";
+    return `${subject} 请求执行 bash 命令 '${result.command || ""}'${patternInfo}。${unitInfo} 允许此命令？`;
   }
 
   if ((result.source === "mcp" || result.toolName === "mcp") && result.target) {
-    const patternInfo = result.matchedPattern ? ` (matched '${result.matchedPattern}')` : "";
-    return `${subject} requested MCP target '${result.target}'${patternInfo}. Allow this call?`;
+    const patternInfo = result.matchedPattern ? ` (匹配 '${result.matchedPattern}')` : "";
+    return `${subject} 请求调用 MCP 目标 '${result.target}'${patternInfo}。允许此调用？`;
   }
 
-  const patternInfo = result.matchedPattern ? ` (matched '${result.matchedPattern}')` : "";
+  const patternInfo = result.matchedPattern ? ` (匹配 '${result.matchedPattern}')` : "";
   const inputPreview = formatToolInputForPrompt(result.toolName, input);
   const inputSuffix = inputPreview ? ` ${inputPreview}` : "";
-  return `${subject} requested tool '${result.toolName}'${patternInfo}${inputSuffix}. Allow this call?`;
+  return `${subject} 请求调用工具 '${result.toolName}'${patternInfo}${inputSuffix}。允许此调用？`;
 }
 
 export function formatSkillAskPrompt(skillName: string, agentName?: string): string {
-  return `${formatAgentSubject(agentName)} requested skill '${skillName}'. Allow loading this skill?`;
+  return `${formatAgentSubject(agentName)} 请求加载 skill '${skillName}'。允许加载此 skill？`;
 }
 
 export function formatSkillPathAskPrompt(skill: SkillPromptEntry, readPath: string, agentName?: string): string {
-  return `${formatAgentSubject(agentName)} requested access to skill '${skill.name}' via '${readPath}'. Allow this read?`;
+  return `${formatAgentSubject(agentName)} 请求通过 '${readPath}' 访问 skill '${skill.name}'。允许此读取？`;
 }
 
 export function formatSkillPathDenyReason(skill: SkillPromptEntry, readPath: string, agentName?: string): string {
-  return `${formatAgentSubject(agentName)} is not permitted to access this skill.`;
+  return `${formatAgentSubject(agentName)} 未被允许访问此 skill。`;
 }
 
 export function formatExternalDirectoryHardStopHint(): string {
-  return "Hard stop: this external directory permission denial is policy-enforced. Do not retry this path, do not attempt a filesystem bypass, and report the block to the user.";
+  return "硬性拦截：此外部目录权限拒绝由策略强制执行。不要重试该路径，不要尝试文件系统绕过，并向用户报告此拦截。";
 }
 
 export function formatExternalDirectoryAskPrompt(
@@ -316,7 +316,7 @@ export function formatExternalDirectoryAskPrompt(
   cwd: string,
   agentName?: string,
 ): string {
-  return `${formatAgentSubject(agentName)} requested tool '${toolName}' for path '${pathValue}' outside working directory '${cwd}'. Allow this external directory access?`;
+  return `${formatAgentSubject(agentName)} 请求在工作目录 '${cwd}' 之外对路径 '${pathValue}' 调用工具 '${toolName}'。允许此外部目录访问？`;
 }
 
 export function formatExternalDirectoryDenyReason(
@@ -325,7 +325,7 @@ export function formatExternalDirectoryDenyReason(
   cwd: string,
   agentName?: string,
 ): string {
-  return `${formatAgentSubject(agentName)} is not permitted to run tool '${toolName}' for path '${pathValue}' outside working directory '${cwd}'. ${formatExternalDirectoryHardStopHint()}`;
+  return `${formatAgentSubject(agentName)} 未被允许在工作目录 '${cwd}' 之外对路径 '${pathValue}' 调用工具 '${toolName}'。${formatExternalDirectoryHardStopHint()}`;
 }
 
 export function formatExternalDirectoryUserDeniedReason(
@@ -333,6 +333,6 @@ export function formatExternalDirectoryUserDeniedReason(
   pathValue: string,
   denialReason?: string,
 ): string {
-  const reasonSuffix = denialReason ? ` Reason: ${denialReason}.` : "";
-  return `User denied external directory access for tool '${toolName}' path '${pathValue}'.${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`;
+  const reasonSuffix = denialReason ? ` 原因：${denialReason}。` : "";
+  return `用户拒绝了工具 '${toolName}' 对路径 '${pathValue}' 的外部目录访问。${reasonSuffix} ${formatExternalDirectoryHardStopHint()}`;
 }

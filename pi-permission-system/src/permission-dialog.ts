@@ -36,11 +36,11 @@ export type PermissionDecisionRequestOptions = {
   timeoutDenialReason?: string;
 };
 
-const APPROVE_ONCE_OPTION = "Allow Once";
-const APPROVE_ALWAYS_OPTION = "Allow Always";
-const REJECT_OPTION = "Reject";
-const REJECT_WITH_REASON_OPTION = "Reject with Reason";
-const VIEW_FULL_COMMAND_OPTION = "View Full Command";
+const APPROVE_ONCE_OPTION = "允许一次";
+const APPROVE_ALWAYS_OPTION = "总是允许";
+const REJECT_OPTION = "拒绝";
+const REJECT_WITH_REASON_OPTION = "拒绝并说明原因";
+const VIEW_FULL_COMMAND_OPTION = "查看完整命令";
 const PERMISSION_DECISION_OPTIONS = [
   APPROVE_ONCE_OPTION,
   APPROVE_ALWAYS_OPTION,
@@ -65,13 +65,13 @@ function formatPromptCompactionNotice(
   hintViewFullCommand: boolean,
 ): string {
   const omittedParts = [
-    omittedLines > 0 ? `${omittedLines} ${omittedLines === 1 ? "line" : "lines"}` : null,
-    omittedCharacters > 0 ? `${omittedCharacters} ${omittedCharacters === 1 ? "character" : "characters"}` : null,
+    omittedLines > 0 ? `${omittedLines} ${omittedLines === 1 ? "行" : "行"}` : null,
+    omittedCharacters > 0 ? `${omittedCharacters} ${omittedCharacters === 1 ? "个字符" : "个字符"}` : null,
   ].filter((part): part is string => typeof part === "string");
-  const omittedSummary = omittedParts.length > 0 ? omittedParts.join(" and ") : "content";
+  const omittedSummary = omittedParts.length > 0 ? omittedParts.join("和") : "内容";
   return hintViewFullCommand
-    ? `[Permission prompt compacted: omitted ${omittedSummary} to keep the permission dialog usable. Use "View Full Command" to inspect the full request.]`
-    : `[Permission prompt compacted: omitted ${omittedSummary} to keep the permission dialog usable.]`;
+    ? `[权限提示已压缩：省略了 ${omittedSummary} 以保持权限弹窗可用。使用"查看完整命令"检查完整请求。]`
+    : `[权限提示已压缩：省略了 ${omittedSummary} 以保持权限弹窗可用。]`;
 }
 
 function compactPermissionPromptForSelect(value: string, hintViewFullCommand: boolean): string {
@@ -224,8 +224,8 @@ export async function requestPermissionDecisionFromUi(
   if (selected === REJECT_WITH_REASON_OPTION) {
     const denialReason = normalizePermissionDenialReason(
       await ui.input(
-        `${title}\nShare why this request was denied (optional).`,
-        "Reason shown back to the agent",
+        `${title}\n请说明拒绝此请求的原因（可选）。`,
+        "将展示给 Agent 的原因",
       ),
     );
 
