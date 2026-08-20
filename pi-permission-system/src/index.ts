@@ -996,8 +996,8 @@ function formatForwardedPermissionPrompt(request: ForwardedPermissionRequest): s
   const agentName = request.requesterAgentName || "unknown";
   const sessionId = request.requesterSessionId || "unknown";
   return [
-    `Subagent '${agentName}' requested permission.`,
-    `Session ID: ${sessionId}`,
+    `子代理 '${agentName}' 请求了权限。`,
+    `会话 ID：${sessionId}`,
     "",
     request.message,
   ].join("\n");
@@ -1205,7 +1205,7 @@ export async function processForwardedPermissionRequests(
       if (extensionConfig.debug) {
         try {
           ctx.ui.notify(
-            `Subagent '${request.requesterAgentName || "unknown"}' is waiting for permission approval.`,
+            `子代理 '${request.requesterAgentName || "unknown"}' 正在等待权限审批。`,
             "warning",
           );
         } catch (error) {
@@ -1221,12 +1221,12 @@ export async function processForwardedPermissionRequests(
           ? `permission_timeout: forwarded permission prompt was not answered within ${forwardedPromptTimeoutSeconds} seconds.`
           : undefined;
         const promptMessage = timeoutMs !== undefined
-          ? `This forwarded prompt auto-denies after ${forwardedPromptTimeoutSeconds} seconds if unanswered.`
-          : "This forwarded prompt will wait indefinitely until answered.";
+          ? `此转发的权限请求若在 ${forwardedPromptTimeoutSeconds} 秒内未响应将自动拒绝。`
+          : "此转发的权限请求将一直等待，直到得到响应。";
 
         decision = await requestPermissionDecisionFromUi(
           ctx.ui,
-          "Permission Required (Subagent)",
+          "需要权限（子代理）",
           [
             formatForwardedPermissionPrompt(request),
             "",
@@ -1276,7 +1276,7 @@ async function confirmPermission(
   message: string,
 ): Promise<PermissionPromptDecision> {
   if (ctx.hasUI) {
-    return requestPermissionDecisionFromUi(ctx.ui, "Permission Required", message);
+    return requestPermissionDecisionFromUi(ctx.ui, "需要权限", message);
   }
 
   if (!isSubagentExecutionContext(ctx)) {
@@ -2050,8 +2050,8 @@ export default function piPermissionSystemExtension(pi: ExtensionAPI): void {
               toolInput: event.input,
             });
             if (!decision.approved) {
-              const denialReason = decision.denialReason ? ` Reason: ${decision.denialReason}.` : "";
-              return { block: true, reason: `User denied access to this skill.${denialReason}` };
+              const denialReason = decision.denialReason ? ` 原因：${decision.denialReason}。` : "";
+              return { block: true, reason: `用户拒绝访问此 skill。${denialReason}` };
             }
           }
         }
