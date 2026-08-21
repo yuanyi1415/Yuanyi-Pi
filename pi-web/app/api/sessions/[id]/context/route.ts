@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { resolveSessionPath, buildSessionContext } from "@/lib/session-reader";
 import { getRpcSession } from "@/lib/rpc-manager";
+import { gatewayEnabled, gatewayGetSessionContext, legacyRuntimeEnabled, runtimeUnavailableResponse } from "@/lib/personal-gateway";
 
 export async function GET(
   req: Request,
@@ -14,7 +15,15 @@ export async function GET(
   const deferToolResultImages = url.searchParams.has("deferMedia");
 
   try {
-    const rpc = getRpcSession(id);
+    if (gatewayEnabled()) {
+      return NextResponse.json(await gatewayGetSessionContext(id, {
+        leafId,
+        deferThinking,
+        deferMedia: deferToolResultImages,
+      }));
+    }
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
+    const rpc = gatewayEnabled() ? undefined : getRpcSession(id);
     const liveRpc = rpc?.isAlive() ? rpc : undefined;
     const filePath = liveRpc ? null : await resolveSessionPath(id);
     if (!liveRpc && !filePath) {

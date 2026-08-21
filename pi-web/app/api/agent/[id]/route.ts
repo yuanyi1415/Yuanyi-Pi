@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { startRpcSession, getRpcSession } from "@/lib/rpc-manager";
-import { gatewayCommand, gatewayEnabled, gatewayGetSession } from "@/lib/personal-gateway";
+import {
+  gatewayCommand, gatewayEnabled, gatewayGetSession,
+  legacyRuntimeEnabled, runtimeUnavailableResponse,
+} from "@/lib/personal-gateway";
 
 // POST /api/agent/[id] - Send a command to an existing session
 export async function POST(
@@ -10,6 +13,7 @@ export async function POST(
 ) {
   const { id } = await params;
   if (gatewayEnabled()) return gatewayPost(req, id);
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
   return legacyPost(req, id);
 }
 
@@ -20,6 +24,7 @@ export async function GET(
 ) {
   const { id } = await params;
   if (gatewayEnabled()) return gatewayGet(_req, id);
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
   return legacyGet(_req, id);
 }
 
@@ -31,7 +36,10 @@ async function gatewayPost(req: Request, id: string) {
     const body = await req.json() as { type: string; [key: string]: unknown };
     commandType = typeof body.type === "string" ? body.type : undefined;
 
-    const result = await gatewayCommand(id, body);
+    const result = await gatewayCommand(id, body, {
+      requestId: req.headers.get("x-yuanyi-request-id") ?? undefined,
+      t0: req.headers.get("x-yuanyi-t0") ?? undefined,
+    });
     promptAccepted = body.type === "prompt";
     if (body.type === "prompt" && !(result as { accepted?: boolean }).accepted) {
       return NextResponse.json({

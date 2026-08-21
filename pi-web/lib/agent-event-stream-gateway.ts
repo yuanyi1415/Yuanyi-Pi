@@ -7,6 +7,7 @@ interface GatewayEnvelope {
   sequence: number;
   type: string;
   timestamp: number;
+  requestId?: string;
   payload: unknown;
 }
 
@@ -54,8 +55,8 @@ export function createGatewayEventStream(
       const encode = (data: unknown) => {
         enqueueText(`data: ${JSON.stringify(data)}\n\n`);
       };
-
-      // 连接建立后先发 connected（模拟 Web 协议），再代理事件
+      // Gateway 先发送真实 state 快照；只有拿到快照后才能声明连接状态，
+      // 否则重连中的流式会话会被错误标记为空闲。
       const connect = async () => {
         try {
           const gatewayRes = await openGateway();
@@ -63,11 +64,6 @@ export function createGatewayEventStream(
             gatewayRes.body?.cancel().catch(() => {});
             return;
           }
-          encode({
-            type: "connected",
-            sessionId,
-            isStreaming: false,
-          });
           const reader = gatewayRes.body!.getReader();
           const decoder = new TextDecoder();
           let buf = "";
@@ -90,8 +86,30 @@ export function createGatewayEventStream(
                 if (!envelope || typeof envelope.payload !== "object" || envelope.payload === null) {
                   continue;
                 }
+                if (envelope.type === "state") {
+                  const state = envelope.payload as {
+                    isStreaming?: boolean;
+                    streamingMessage?: unknown;
+                  };
+                  encode({
+                    type: "connected",
+                    sessionId,
+                    isStreaming: state.isStreaming === true,
+                  });
+                  if (state.streamingMessage !== undefined && state.streamingMessage !== null) {
+                    encode({ type: "message_start", message: state.streamingMessage });
+                  }
+                  continue;
+                }
                 const clientEvent = toClientAgentEvent(envelope.payload as AgentEventLike);
-                if (clientEvent) encode(clientEvent);
+                if (clientEvent) {
+                  encode({
+                    ...clientEvent,
+                    ...(envelope.requestId
+                      ? { requestId: envelope.requestId, gatewayEventAt: envelope.timestamp }
+                      : {}),
+                  });
+                }
               }
             }
           } finally {

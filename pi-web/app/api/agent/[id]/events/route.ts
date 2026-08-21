@@ -2,7 +2,7 @@ import { createAgentEventStream } from "@/lib/agent-event-stream";
 import { resolveSessionPath } from "@/lib/session-reader";
 import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
 import { createGatewayEventStream } from "@/lib/agent-event-stream-gateway";
-import { gatewayEnabled, gatewayEventStream } from "@/lib/personal-gateway";
+import { gatewayEnabled, gatewayEventStream, legacyRuntimeEnabled, runtimeUnavailableResponse } from "@/lib/personal-gateway";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,8 @@ export async function GET(
       },
     });
   }
+
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
 
   // 原 rpc-manager 路径（回退）
   const session = getRpcSession(id);

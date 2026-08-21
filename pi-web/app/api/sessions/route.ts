@@ -5,12 +5,13 @@ import {
   mergeSessionLists,
 } from "@/lib/session-reader";
 import { getRpcSessionInfos, getRunningRpcSessionIds } from "@/lib/rpc-manager";
-import { gatewayEnabled, gatewayListSessions } from "@/lib/personal-gateway";
+import { gatewayEnabled, gatewayListSessions, legacyRuntimeEnabled, runtimeUnavailableResponse } from "@/lib/personal-gateway";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   if (gatewayEnabled()) return gatewayList(req);
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
   return legacyList(req);
 }
 
@@ -21,7 +22,9 @@ async function gatewayList(req: Request) {
     const webSessions = sessions.map((s) => ({
       id: s.sessionId,
       path: "",
-      cwd: s.runtimeCwd,
+      cwd: s.projectDirectory ?? "",
+      projectRoot: s.projectDirectory ?? undefined,
+      projectDisplayName: s.projectDisplayName,
       name: s.title ?? "",
       created: s.createdAt
         ? new Date(s.createdAt).toISOString()

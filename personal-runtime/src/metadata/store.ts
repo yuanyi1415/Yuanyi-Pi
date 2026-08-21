@@ -23,12 +23,20 @@ export interface SessionMeta {
   modelPresetId?: string | null;
 }
 
+export interface KnownProject {
+  path: string;
+  displayName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ChannelBinding {
   activeSessionId: string;
 }
 
 interface MetadataFile {
   version: 1;
+  projects: Record<string, KnownProject>;
   sessions: Record<string, SessionMeta>;
   channelBindings: Record<string, Record<string, ChannelBinding>>;
 }
@@ -38,7 +46,7 @@ export function channelKey(accountId: string, contactId: string): string {
 }
 
 export class MetadataStore {
-  private data: MetadataFile = { version: 1, sessions: {}, channelBindings: {} };
+  private data: MetadataFile = { version: 1, projects: {}, sessions: {}, channelBindings: {} };
 
   constructor(private readonly filePath: string) {}
 
@@ -50,6 +58,7 @@ export class MetadataStore {
       if (raw && typeof raw === "object" && raw.version === 1) {
         this.data = {
           version: 1,
+          projects: raw.projects ?? {},
           sessions: raw.sessions ?? {},
           channelBindings: raw.channelBindings ?? {},
         };
@@ -68,9 +77,53 @@ export class MetadataStore {
     return this.data.sessions;
   }
 
+  getProjects(): KnownProject[] {
+    return Object.values(this.data.projects).sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  getProject(path: string): KnownProject | undefined {
+    return this.data.projects[path];
+  }
+
+  upsertProject(path: string, displayName: string, now = Date.now()): KnownProject {
+    const existing = this.data.projects[path];
+    const project: KnownProject = {
+      path,
+      displayName: displayName.trim() || existing?.displayName || path,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.data.projects[path] = project;
+    this.save();
+    return project;
+  }
+
+  renameProject(path: string, displayName: string): KnownProject | undefined {
+    const existing = this.data.projects[path];
+    if (!existing) return undefined;
+    const project = { ...existing, displayName: displayName.trim(), updatedAt: Date.now() };
+    this.data.projects[path] = project;
+    this.save();
+    return project;
+  }
+
+  removeProject(path: string): boolean {
+    if (!(path in this.data.projects)) return false;
+    delete this.data.projects[path];
+    this.save();
+    return true;
+  }
+
   setSessionMeta(sessionId: string, meta: SessionMeta): void {
     this.data.sessions[sessionId] = meta;
     this.save();
+  }
+
+  removeSessionMeta(sessionId: string): void {
+    if (sessionId in this.data.sessions) {
+      delete this.data.sessions[sessionId];
+      this.save();
+    }
   }
 
   getBinding(channelType: string, key: string): ChannelBinding | undefined {
@@ -89,6 +142,19 @@ export class MetadataStore {
       delete channel[key];
       this.save();
     }
+  }
+
+  removeBindingsForSession(sessionId: string): void {
+    let changed = false;
+    for (const bindings of Object.values(this.data.channelBindings)) {
+      for (const [key, binding] of Object.entries(bindings)) {
+        if (binding.activeSessionId === sessionId) {
+          delete bindings[key];
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.save();
   }
 
   /** 原子写：临时文件 + rename 替换 */

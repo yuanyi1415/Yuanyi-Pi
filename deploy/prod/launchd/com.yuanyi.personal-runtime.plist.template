@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.yuanyi.personal-runtime</string>
+
+  <!-- 部署时将双下划线占位符替换为生产安装路径；模板不属于 dev launcher。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PROD_NODE_BIN__</string>
+    <string>__PROD_RUNTIME_ROOT__/src/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__PROD_RUNTIME_ROOT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>YUANYI_RUNTIME_ENV</key>
+    <string>prod</string>
+    <key>YUANYI_PI_DATA_DIR</key>
+    <string>__PROD_DATA_DIR__</string>
+    <key>YUANYI_PI_AGENT_DIR</key>
+    <string>__PROD_AGENT_DIR__</string>
+    <key>YUANYI_PI_PORT</key>
+    <string>__PROD_RUNTIME_PORT__</string>
+    <key>YUANYI_PI_WECHAT_ENABLED</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>

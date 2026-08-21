@@ -12,6 +12,10 @@ import {
 } from "@/lib/session-reader";
 import { sessionPathKey } from "@/lib/session-path";
 import { getRpcSession } from "@/lib/rpc-manager";
+import {
+  gatewayCommand, gatewayDeleteSession, gatewayEnabled, gatewayGetSessionDocument,
+  legacyRuntimeEnabled, runtimeUnavailableResponse,
+} from "@/lib/personal-gateway";
 import { projectTreeForResponse } from "@/lib/project-tree";
 import { computeSessionTotalActiveMs } from "@/lib/session-timing";
 
@@ -21,7 +25,25 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const rpc = getRpcSession(id);
+    if (gatewayEnabled()) {
+      const searchParams = new URL(req.url).searchParams;
+      const document = await gatewayGetSessionDocument(id, {
+        leafId: searchParams.get("leafId") ?? undefined,
+        deferThinking: searchParams.has("deferThinking"),
+        deferMedia: searchParams.has("deferMedia"),
+      });
+      return NextResponse.json({
+        sessionId: id,
+        filePath: document.filePath,
+        info: document.info,
+        leafId: document.leafId,
+        tree: projectTreeForResponse(document.tree as never),
+        context: document.context,
+        totalActiveMs: document.totalActiveMs,
+      });
+    }
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
+    const rpc = gatewayEnabled() ? undefined : getRpcSession(id);
     const liveRpc = rpc?.isAlive() ? rpc : undefined;
     const resolvedPath = liveRpc ? null : await resolveSessionPath(id);
     if (!liveRpc && !resolvedPath) {
@@ -31,9 +53,9 @@ export async function GET(
     const sm = liveRpc?.inner.sessionManager ?? SessionManager.open(resolvedPath!);
     const filePath = liveRpc?.sessionFile || sm.getSessionFile() || resolvedPath || "";
     const entries = sm.getEntries();
-    const leafId = sm.getLeafId();
-    const tree = projectTreeForResponse(sm.getTree());
     const searchParams = new URL(req.url).searchParams;
+    const leafId = searchParams.get("leafId") ?? sm.getLeafId();
+    const tree = projectTreeForResponse(sm.getTree());
     const deferThinking = searchParams.has("deferThinking");
     const deferToolResultImages = searchParams.has("deferMedia");
     const context = buildSessionContext(entries as never, leafId, { deferThinking, deferToolResultImages });
@@ -89,6 +111,12 @@ export async function PATCH(
     if (typeof name !== "string") {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
+    if (gatewayEnabled()) {
+      await gatewayCommand(id, { type: "set_session_name", name: name.trim() });
+      invalidateSessionListCache();
+      return NextResponse.json({ ok: true });
+    }
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -109,6 +137,13 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
+    if (gatewayEnabled()) {
+      await gatewayDeleteSession(id);
+      invalidateSessionPathCache(id);
+      invalidateSessionListCache();
+      return NextResponse.json({ ok: true });
+    }
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });

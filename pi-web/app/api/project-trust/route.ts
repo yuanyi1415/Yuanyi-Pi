@@ -6,6 +6,10 @@ import { getAllowedFileRoots, isExistingFilePathAllowed } from "@/lib/file-acces
 import { invalidateModelsCache } from "@/lib/models-cache";
 import { getProjectTrustStatus, trustProject } from "@/lib/project-trust";
 import { destroyRpcSessionsForCwd, hasBusyRpcSessionForCwd } from "@/lib/rpc-manager";
+import {
+  gatewayEnabled, gatewayGetProjectTrust, gatewayTrustProject,
+  legacyRuntimeEnabled, runtimeUnavailableResponse,
+} from "@/lib/personal-gateway";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +39,8 @@ async function validateCwd(value: unknown): Promise<
 export async function GET(req: Request) {
   const result = await validateCwd(new URL(req.url).searchParams.get("cwd"));
   if ("response" in result) return result.response;
+  if (gatewayEnabled()) return NextResponse.json(await gatewayGetProjectTrust(result.cwd));
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
   return NextResponse.json(getProjectTrustStatus(result.cwd, getAgentDir()));
 }
 
@@ -43,6 +49,8 @@ export async function POST(req: Request) {
     const body = await req.json() as { cwd?: unknown };
     const result = await validateCwd(body.cwd);
     if ("response" in result) return result.response;
+    if (gatewayEnabled()) return NextResponse.json(await gatewayTrustProject(result.cwd));
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
 
     const agentDir = getAgentDir();
     const current = getProjectTrustStatus(result.cwd, agentDir);
@@ -58,9 +66,10 @@ export async function POST(req: Request) {
     await destroyRpcSessionsForCwd(result.cwd);
     return NextResponse.json(status);
   } catch (error) {
+    const status = (error as { status?: number }).status;
     return NextResponse.json(
       { error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
+      { status: status ?? 500 },
     );
   }
 }

@@ -6,23 +6,24 @@ export interface RecentProject {
   key: string;
   /** Original project path used for display and filesystem operations. */
   root: string;
+  displayName: string;
 }
 
 /** Projects sorted by most recent activity and deduplicated by stable key. */
 export function getRecentProjects(sessions: readonly SessionInfo[]): RecentProject[] {
-  const latestByProject = new Map<string, { root: string; modified: string }>();
+  const latestByProject = new Map<string, { root: string; modified: string; displayName: string }>();
   for (const session of sessions) {
     const root = session.projectRoot ?? session.cwd;
     if (!root) continue;
     const key = workspaceKeyOf(session);
     const previous = latestByProject.get(key);
     if (!previous || session.modified > previous.modified) {
-      latestByProject.set(key, { root, modified: session.modified });
+      latestByProject.set(key, { root, modified: session.modified, displayName: session.projectDisplayName ?? root.split(/[\\/]/).pop() ?? root });
     }
   }
   return [...latestByProject.entries()]
     .sort((a, b) => b[1].modified.localeCompare(a[1].modified))
-    .map(([key, { root }]) => ({ key, root }));
+    .map(([key, { root, displayName }]) => ({ key, root, displayName }));
 }
 
 export function getProjectActivity(

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createJiti } from "jiti";
 
+process.env.ALLOW_LEGACY_RPC_RUNTIME = "1";
+
 const listRoute = await readFile(new URL("./route.ts", import.meta.url), "utf8");
 const detailRoute = await readFile(new URL("./[id]/route.ts", import.meta.url), "utf8");
 const contextRoute = await readFile(new URL("./[id]/context/route.ts", import.meta.url), "utf8");

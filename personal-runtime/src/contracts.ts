@@ -19,6 +19,7 @@ export interface SessionDescriptor {
   sessionId: string;
   title?: string;
   projectDirectory: string | null;
+  projectDisplayName?: string;
   runtimeCwd: string;
   originChannel?: "web" | "wechat";
   model?: ModelSelection;
@@ -27,12 +28,20 @@ export interface SessionDescriptor {
   updatedAt?: number;
 }
 
+export interface KnownProject {
+  path: string;
+  displayName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Gateway Event Envelope（C-3） */
 export interface GatewayEvent {
   sessionId: string;
   sequence: number;
   type: string;
   timestamp: number;
+  requestId?: string;
   payload: unknown;
 }
 
@@ -44,6 +53,8 @@ export interface SessionRuntimeState {
   model?: ModelSelection;
   thinkingLevel?: ThinkingLevel;
   cwd: string;
+  /** 当前流式 assistant 消息快照，用于 SSE 重连恢复 */
+  streamingMessage?: unknown;
 }
 
 /** Session 命令面（C-2，保留 Pi Web 现有能力） */
@@ -55,6 +66,7 @@ export type SessionCommand =
   | { type: "set_model"; model: ModelSelection }
   | { type: "set_thinking_level"; level: ThinkingLevel }
   | { type: "set_tools"; toolNames: string[] }
+  | { type: "set_session_name"; name: string }
   | { type: "compact" }
   | { type: "get_state" };
 
@@ -62,7 +74,8 @@ export type SessionCommand =
 export interface PromptAck {
   accepted: boolean;
   sessionId: string;
-  reason?: "busy" | "error";
+  /** preflight_rejected：Pi 原生 preflight 未通过（无模型/无认证等），Prompt 未被接受 */
+  reason?: "busy" | "error" | "preflight_rejected";
 }
 
 /** Channel 入站消息（C-4） */

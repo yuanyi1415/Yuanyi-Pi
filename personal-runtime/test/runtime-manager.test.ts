@@ -81,6 +81,75 @@ test("dispose 后 getOrCreate 重建，sessionId 不变", async () => {
   await mgr.shutdown();
 });
 
+test("普通 prompt 串行，失败后继续执行且清理队列尾链", async () => {
+  const { cwd, agentDir } = tmp();
+  const { sessionFile } = makeSessionFile(cwd, agentDir);
+  const mgr = new RuntimeManager({ agentDir });
+  const runtime = await mgr.getOrCreate({ sessionFile, cwd });
+  const calls: string[] = [];
+  let releaseFirst!: () => void;
+  const firstDone = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+
+  runtime.prompt = async (message) => {
+    calls.push(message);
+    if (message === "first") {
+      await firstDone;
+      throw new Error("prompt failed");
+    }
+    return { accepted: true, sessionId: runtime.sessionId };
+  };
+  runtime.sendCommand = async () => {
+    throw new Error("普通 prompt 不应走 Pi sendCommand");
+  };
+
+  const first = mgr.sendCommand(runtime.sessionId, { type: "prompt", message: "first" });
+  const second = mgr.sendCommand(runtime.sessionId, { type: "prompt", message: "second" });
+  await waitFor(() => calls.length === 1);
+  assert.deepEqual(calls, ["first"]);
+  releaseFirst();
+  await assert.rejects(first, /prompt failed/);
+  assert.deepEqual(await second, { accepted: true, sessionId: runtime.sessionId });
+  await waitFor(
+    () =>
+      (mgr as unknown as { operationTails: Map<string, Promise<unknown>> }).operationTails.size === 0,
+  );
+  await mgr.shutdown();
+});
+
+test("dispose 与已受理的 prompt 串行，dispose 不会中断运行中的 prompt", async () => {
+  const { cwd, agentDir } = tmp();
+  const { sessionFile } = makeSessionFile(cwd, agentDir);
+  const mgr = new RuntimeManager({ agentDir });
+  const runtime = await mgr.getOrCreate({ sessionFile, cwd });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let disposed = false;
+  runtime.prompt = async () => {
+    await gate;
+    return { accepted: true, sessionId: runtime.sessionId };
+  };
+  runtime.dispose = async () => { disposed = true; };
+
+  const prompt = mgr.prompt(runtime.sessionId, "long");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const dispose = mgr.dispose(runtime.sessionId);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(disposed, false);
+  let resumed = false;
+  const resume = mgr.getOrCreate({ sessionFile, cwd }).then(() => { resumed = true; });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(resumed, false);
+  release();
+  await prompt;
+  await dispose;
+  await resume;
+  assert.equal(resumed, true);
+  assert.equal(disposed, true);
+  await mgr.shutdown();
+});
+
 test("空闲回收：超时未活动被回收；touch 可防回收", async () => {
   const { cwd, agentDir } = tmp();
   const f1 = makeSessionFile(cwd, agentDir);
@@ -98,6 +167,25 @@ test("空闲回收：超时未活动被回收；touch 可防回收", async () =>
 
   assert.equal(mgr.isRunning(reaped.sessionId), false, "空闲 Runtime 已回收");
   assert.equal(mgr.isRunning(kept.sessionId), true, "持续活动的 Runtime 保留");
+  await mgr.shutdown();
+});
+
+test("空闲扫描保护 streaming Runtime，仅真正 idle 后回收", async () => {
+  const { cwd, agentDir } = tmp();
+  const { sessionFile } = makeSessionFile(cwd, agentDir);
+  const mgr = new RuntimeManager({ agentDir, idleTimeoutMs: 100, scanIntervalMs: 20 });
+  const runtime = await mgr.getOrCreate({ sessionFile, cwd });
+  const ready = await runtime.getState();
+  let state: typeof ready = { ...ready, state: "busy", isStreaming: true, isIdle: false };
+  runtime.getState = async () => state;
+
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(mgr.isRunning(runtime.sessionId), true, "streaming Runtime 不应被回收");
+
+  state = { ...ready, state: "ready", isStreaming: false, isIdle: true };
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(mgr.isRunning(runtime.sessionId), true, "刚进入 idle 时应重新计时");
+  await waitFor(() => !mgr.isRunning(runtime.sessionId));
   await mgr.shutdown();
 });
 

@@ -136,6 +136,7 @@ export interface UseAgentSessionOptions {
   session: SessionInfo | null;
   sessionRunning?: boolean;
   newSessionCwd: string | null;
+  newSessionProjectDisplayName?: string | null;
   newSessionDraftKey: string | null;
   onAgentEnd?: () => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest) => void;
@@ -263,7 +264,7 @@ type SlashCommandsResponse = {
 
 export function useAgentSession(opts: UseAgentSessionOptions) {
   const {
-    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
+    session, sessionRunning, newSessionCwd, newSessionProjectDisplayName, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
   } = opts;
 
@@ -325,6 +326,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const bashRunningRef = useRef(false);
   const bashRecoveryIdRef = useRef(0);
   const handleAgentEventRef = useRef<((event: AgentEvent) => void) | null>(null);
+  const firstBrowserOutputRequestIdsRef = useRef(new Set<string>());
   const initialScrollDoneRef = useRef(false);
   const lastUserMsgRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollToUserRef = useRef(false);
@@ -552,7 +554,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const promoteNewSession = useCallback((messageCount = 0, firstMessage = "(no messages)") => {
     const sid = sessionIdRef.current;
-    if (!isNew || !newSessionCwd || !sid || newSessionPromotedRef.current) return;
+    if (!isNew || newSessionCwd === null || !sid || newSessionPromotedRef.current) return;
     newSessionPromotedRef.current = true;
     const provisionalDraftKey = newSessionDraftKey;
     if (!provisionalDraftKey) return;
@@ -577,7 +579,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const ensureNewSession = useCallback(async () => {
     if (sessionIdRef.current) return sessionIdRef.current;
-    if (!isNew || !newSessionCwd) return sessionIdRef.current;
+    if (!isNew || newSessionCwd === null) return sessionIdRef.current;
     if (ensuringNewSessionRef.current) return ensuringNewSessionRef.current;
 
     const promise = (async () => {
@@ -592,6 +594,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cwd: newSessionCwd,
+          projectDisplayName: newSessionProjectDisplayName,
           type: "ensure_session",
           toolNames,
           ...(selectedModel ? { provider: selectedModel.provider, modelId: selectedModel.modelId } : {}),
@@ -627,22 +630,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       ensuringNewSessionRef.current = null;
     }
-  }, [isNew, newSessionCwd, toolPreset]);
+  }, [isNew, newSessionCwd, newSessionProjectDisplayName, toolPreset]);
 
-  // Opening the System panel is also allowed to initialize an otherwise dormant
-  // session. This is deliberately a non-prompt command: it creates no message
-  // or model run, but lets users inspect the exact prompt before sending one.
+  // A new Draft must remain backend-free until its first user message.
   const loadSystemPrompt = useCallback(async () => {
-    const sid = sessionIdRef.current ?? await ensureNewSession();
+    const sid = sessionIdRef.current ?? (isNew ? null : await ensureNewSession());
     if (!sid) return;
 
     const state = await sendAgentCommand<AgentStateResponse>(sid, { type: "get_state" });
     if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return;
     setSystemPrompt(state.systemPrompt ?? "");
-  }, [ensureNewSession]);
+  }, [ensureNewSession, isNew]);
 
   const loadSlashCommands = useCallback(async () => {
-    const sid = sessionIdRef.current ?? await ensureNewSession();
+    const sid = sessionIdRef.current ?? (isNew ? null : await ensureNewSession());
     if (!sid) {
       setSlashCommands([]);
       return [] as SlashCommandInfo[];
@@ -660,7 +661,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       setSlashCommandsLoading(false);
     }
-  }, [ensureNewSession]);
+  }, [ensureNewSession, isNew]);
 
   const cancelEventStreamGrace = useCallback(() => {
     eventStreamGraceGenerationRef.current += 1;
@@ -1020,6 +1021,24 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
+    const requestId = typeof event.requestId === "string" ? event.requestId : undefined;
+    if (
+      requestId
+      && (event.type === "message_start" || event.type === "message_update")
+      && !firstBrowserOutputRequestIdsRef.current.has(requestId)
+    ) {
+      firstBrowserOutputRequestIdsRef.current.add(requestId);
+      const t3 = Date.now();
+      const t2 = typeof event.gatewayEventAt === "number" ? event.gatewayEventAt : undefined;
+      console.info("[perf]", JSON.stringify({
+        phase: "T3",
+        requestId,
+        sessionId: sessionIdRef.current,
+        ...(t2 !== undefined ? { t2 } : {}),
+        t3,
+        ...(t2 !== undefined ? { streamProxyMs: t3 - t2 } : {}),
+      }));
+    }
     switch (event.type) {
       case "connected": {
         dispatch({ type: "end" });
@@ -1298,7 +1317,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     let promptRequestStarted = false;
 
     try {
-      if (isNew && newSessionCwd) {
+      if (isNew && newSessionCwd !== null) {
         const selectedModel = newSessionModel;
         const existingSid = sessionIdRef.current ?? await ensuringNewSessionRef.current;
         const sid = existingSid ?? await ensureNewSession();
@@ -1554,7 +1573,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
     const [, commandName, rawArgs = ""] = match;
     const args = rawArgs.trim();
-    const sid = sessionIdRef.current ?? await ensureNewSession();
+    const sid = sessionIdRef.current ?? (isNew ? null : await ensureNewSession());
     const complete = (result: BuiltinSlashCommandResult): BuiltinSlashCommandResult => {
       if (!result.handled) return result;
       if (result.error) {
@@ -1628,7 +1647,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     } finally {
       if (commandName === "compact") setIsCompacting(false);
     }
-  }, [addNotice, ensureNewSession, isCompacting, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
+  }, [addNotice, ensureNewSession, isCompacting, isNew, loadModels, loadSession, loadSlashCommands, loadTools, promoteNewSession, onSessionStatsPanelOpen]);
 
   // Let AgentSession.prompt decide atomically whether to queue against the
   // current run or start a new turn if it settled while the request was in

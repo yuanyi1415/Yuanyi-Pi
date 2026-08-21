@@ -70,7 +70,7 @@ test("a rejected submission preserves a different run reported by the server", (
   assert.match(reconcileSource, /if \(!agentRunningRef\.current\) return;[\s\S]*?finishPromptWithoutStream/);
 });
 
-test("opening System lazily starts a dormant session without sending a prompt", () => {
+test("opening System does not materialize a fresh draft", () => {
   const loadSystemPromptSource = source.slice(
     source.indexOf("  const loadSystemPrompt = useCallback"),
     source.indexOf("  const loadSlashCommands = useCallback"),
@@ -80,7 +80,7 @@ test("opening System lazily starts a dormant session without sending a prompt", 
     source.indexOf("  useEffect(() => {\n    if (!onBranchDataChange) return;"),
   );
 
-  assert.match(loadSystemPromptSource, /sessionIdRef\.current \?\? await ensureNewSession\(\)/);
+  assert.match(loadSystemPromptSource, /sessionIdRef\.current \?\? \(isNew \? null : await ensureNewSession\(\)\)/);
   assert.doesNotMatch(loadSystemPromptSource, /promoteNewSession\(\)/);
   assert.match(loadSystemPromptSource, /sendAgentCommand<AgentStateResponse>\(sid, \{ type: "get_state" \}\)/);
   assert.doesNotMatch(loadSystemPromptSource, /type: "prompt"/);

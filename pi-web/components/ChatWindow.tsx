@@ -29,6 +29,7 @@ interface Props {
   session: SessionInfo | null;
   sessionRunning?: boolean;
   newSessionCwd: string | null;
+  newSessionProjectDisplayName?: string | null;
   newSessionDraftKey: string | null;
   onAgentEnd?: () => void;
   onAttentionNeeded?: (request: BlockingExtensionUiRequest) => void;
@@ -250,7 +251,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, defaultExpanded = fa
   );
 }
 
-export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
+export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionProjectDisplayName, newSessionDraftKey, onAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onContextUsageChange, onOpenFile, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
 
@@ -293,7 +294,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
     handleBuiltinSlashCommand,
     handleToolPresetChange, handleThinkingLevelChange, loadSlashCommands, scrollUserMsgToTop,
   } = useAgentSession({
-    session, sessionRunning, newSessionCwd, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
+    session, sessionRunning, newSessionCwd, newSessionProjectDisplayName, newSessionDraftKey, onAgentEnd: wrappedOnAgentEnd, onAttentionNeeded, onSessionCreated, onSessionForked,
     modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemPromptLoaderChange, onSessionStatsPanelOpen,
   });
   const sessionBusy = agentRunning || bashRunning;

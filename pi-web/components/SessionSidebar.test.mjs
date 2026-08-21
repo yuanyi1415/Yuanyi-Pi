@@ -68,3 +68,18 @@ test("does not expose disk-backed actions for transient sessions", () => {
   assert.match(sessionItemSource, /if \(session\.transient\) return;/);
   assert.match(sessionItemSource, /\{hovered && !session\.transient && \(/);
 });
+
+test("keeps topic as an explicit new-session target", () => {
+  assert.match(source, /t\("sidebar\.topics"\)/);
+  assert.match(source, /setSelectedCwd\(null\)/);
+  assert.match(source, /setSelectedCwd\(s\.cwd \|\| null\)/);
+  assert.doesNotMatch(source, /if \(projects\.length > 0\) setSelectedCwd\(projects\[0\]\.root\)/);
+});
+
+test("keeps all sessions visible and loads persistent project groups", () => {
+  assert.match(source, /const filteredSessions = allSessions;/);
+  assert.match(source, /fetch\("\/api\/projects"/);
+  assert.match(source, /function ProjectGroupItem\(/);
+  assert.match(source, /sidebar\.renameProject/);
+  assert.match(source, /sidebar\.removeProject/);
+});

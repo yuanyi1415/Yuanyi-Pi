@@ -31,6 +31,7 @@ test("Windows path variants form one recent project using the newest display pat
   assert.deepEqual(getRecentProjects([older, newer]), [{
     key: older.projectKey,
     root: newer.projectRoot,
+    displayName: "elm",
   }]);
 });
 

@@ -309,6 +309,8 @@ export interface SessionInfo {
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
   projectRoot?: string;
+  /** User-facing project alias; never used as the project identity. */
+  projectDisplayName?: string;
   /** Stable server-computed project identity for grouping and comparison.
    *  Unlike projectRoot, Windows keys are case- and separator-insensitive.
    *  Internal only: use projectRoot/cwd for display and filesystem operations. */

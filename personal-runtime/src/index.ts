@@ -28,8 +28,9 @@ import { WechatChannelController } from "./channel/wechat/controller";
 async function main(): Promise<void> {
   console.log("[personal-runtime] config:", JSON.stringify(config));
 
-  // neutralCwd 必须真实存在：无项目 Session 的 Agent 工具（bash/文件）需要有效工作目录
+  // 无项目 Session 的 Agent 工具（bash/文件）需要有效工作目录
   mkdirSync(config.neutralCwd, { recursive: true });
+  mkdirSync(config.workspaceRoot, { recursive: true });
 
   // 渠道配置存储：adapter 与 controller 必须共享同一实例（否则配置缓存不一致）
   const channelConfigStore = new ChannelConfigStore(config.dataDir);
@@ -42,6 +43,10 @@ async function main(): Promise<void> {
     runtimeManager,
     metadata,
     neutralCwd: config.neutralCwd,
+    workspaceRoot: config.workspaceRoot,
+    // 必须显式传 sessionDir：SDK listAll() 无参只扫 sessions/ 下的子目录，
+    // 无项目 Session 的扁平 .jsonl 会漏扫 → 重启后历史 Session 恢复失败（S6-03 验收发现）
+    sessionDir: join(config.agentDir, "sessions"),
   });
 
   // 微信 Channel（一期：私聊文本）
@@ -84,7 +89,7 @@ async function main(): Promise<void> {
     });
   }
 
-  const server = createGatewayServer(router, runtimeManager, wechatController ?? undefined);
+  const server = createGatewayServer(router, runtimeManager, wechatController ?? undefined, config.agentDir);
   server.listen(config.port, "127.0.0.1", () => {
     console.log(`[personal-runtime] gateway listening on http://127.0.0.1:${config.port}`);
   });

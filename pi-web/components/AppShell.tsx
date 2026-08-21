@@ -90,6 +90,7 @@ export function AppShell() {
   }, []);
   // The temporary id distinguishes consecutive fresh composers in one cwd.
   const [newSessionCwd, setNewSessionCwd] = useState<string | null>(null);
+  const [newSessionProjectDisplayName, setNewSessionProjectDisplayName] = useState<string | null>(null);
   const [newSessionDraftId, setNewSessionDraftId] = useState("initial");
   const activeNewSessionDraftKeyRef = useRef<string | null>(null);
   const [initialCwdStatus, setInitialCwdStatus] = useState<"idle" | "validating" | "ready" | "error">(
@@ -572,6 +573,7 @@ export function AppShell() {
       }
     }
     setNewSessionCwd(null);
+    setNewSessionProjectDisplayName(null);
     setSelectedSession(session);
     setSessionKey((k) => k + 1);
     setSystemPrompt(null);
@@ -591,13 +593,14 @@ export function AppShell() {
     }
   }, [invalidateWorkspaceRestore, router, isMobile, selectedSession]);
 
-  const handleNewSession = useCallback((sessionId: string, cwd: string) => {
+  const handleNewSession = useCallback((sessionId: string, cwd: string, projectDisplayName?: string) => {
     invalidateWorkspaceRestore();
     const draftKey = `new:${sessionId}:${cwd}`;
     activeNewSessionDraftKeyRef.current = draftKey;
     setNewSessionDraftId(sessionId);
     setSelectedSession(null);
     setNewSessionCwd(cwd);
+    setNewSessionProjectDisplayName(projectDisplayName ?? null);
     setSessionKey((k) => k + 1);
     setBranchTree([]);
     setBranchActiveLeafId(null);
@@ -640,6 +643,7 @@ export function AppShell() {
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     setNewSessionCwd(null);
+    setNewSessionProjectDisplayName(null);
     setSelectedSession(session);
     hydrateSelectedSession(session.id);
     router.replace(`?session=${encodeURIComponent(session.id)}`, { scroll: false });
@@ -835,9 +839,9 @@ export function AppShell() {
     );
   }, [selectedSession]);
 
-  // Show chat area if a session is selected, or if we have a cwd to start a new session in
-  const effectiveNewSessionCwd = newSessionCwd ?? (selectedSession === null && activeCwd ? activeCwd : null);
-  const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd
+  // Show chat area if a session is selected, or if a new projectless topic is being drafted.
+  const effectiveNewSessionCwd = newSessionCwd;
+  const newSessionDraftKey = selectedSession === null && effectiveNewSessionCwd !== null
     ? `new:${newSessionDraftId}:${effectiveNewSessionCwd}`
     : null;
   useLayoutEffect(() => {
@@ -2083,6 +2087,7 @@ export function AppShell() {
               session={selectedSession}
               sessionRunning={Boolean(selectedSession && runningSessionIds.has(selectedSession.id))}
               newSessionCwd={effectiveNewSessionCwd}
+              newSessionProjectDisplayName={newSessionProjectDisplayName}
               newSessionDraftKey={newSessionDraftKey}
               onAgentEnd={handleAgentEnd}
               onAttentionNeeded={handleAttentionNeeded}

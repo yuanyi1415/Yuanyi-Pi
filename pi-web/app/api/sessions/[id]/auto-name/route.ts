@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { generateSessionTitle } from "@/lib/session-title";
 import { getRpcSession, startRpcSession } from "@/lib/rpc-manager";
 import { invalidateSessionListCache, resolveSessionPath } from "@/lib/session-reader";
+import {
+  gatewayGenerateSessionTitle, gatewayEnabled,
+  legacyRuntimeEnabled, runtimeUnavailableResponse,
+} from "@/lib/personal-gateway";
 
 export async function POST(
   _req: Request,
@@ -11,6 +16,8 @@ export async function POST(
   const { id } = await params;
 
   try {
+    if (gatewayEnabled()) return gatewayAutoName(id);
+    if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
     const filePath = await resolveSessionPath(id);
     if (!filePath) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
@@ -42,4 +49,10 @@ export async function POST(
       { status: 500 },
     );
   }
+}
+
+async function gatewayAutoName(id: string): Promise<Response> {
+  const result = await gatewayGenerateSessionTitle(id);
+  invalidateSessionListCache();
+  return NextResponse.json(result);
 }

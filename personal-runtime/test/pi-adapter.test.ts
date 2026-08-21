@@ -109,3 +109,72 @@ test("subscribe: 事件转发为 GatewayEvent envelope 结构", async () => {
   assert.ok(sessionId.length > 0);
   await adapter.dispose();
 });
+
+// ---------- S6-01：preflightResult 契约映射 ----------
+// 环境说明：opencode 内置模型 hasConfiguredAuth 恒真，真实 Pi 栈无法确定性触发 rejected，
+// 故注入 fake inner 验证 adapter 对 Pi 原生 preflightResult(success) 的事务映射。
+
+test("S6-01: inner preflight rejected → adapter 返回 accepted:false + reason:preflight_rejected（不 throw）", async () => {
+  const cwd = makeTmpDir("yuanyi-cwd-");
+  const agentDir = makeTmpDir("yuanyi-agent-");
+  const adapter = await PiRuntimeAdapter.create({ cwd, agentDir });
+
+  (adapter as unknown as { inner: unknown }).inner = {
+    prompt: async (_text: string, options: { preflightResult?: (ok: boolean) => void }) => {
+      options.preflightResult?.(false);
+      throw new Error("No model selected");
+    },
+    dispose: async () => {},
+  };
+
+  const preflightSignals: boolean[] = [];
+  const ack = await adapter.prompt("hi", undefined, (accepted) => preflightSignals.push(accepted));
+  assert.equal(ack.accepted, false);
+  assert.equal(ack.reason, "preflight_rejected");
+  assert.deepEqual(preflightSignals, [false], "onPreflight 必须实时收到 preflight rejected 信号");
+  await adapter.dispose();
+});
+
+test("S6-01: inner preflight accepted 但执行失败 → throw 且标记 promptAccepted，避免上层误回滚", async () => {
+  const cwd = makeTmpDir("yuanyi-cwd-");
+  const agentDir = makeTmpDir("yuanyi-agent-");
+  const adapter = await PiRuntimeAdapter.create({ cwd, agentDir });
+
+  (adapter as unknown as { inner: unknown }).inner = {
+    prompt: async (_text: string, options: { preflightResult?: (ok: boolean) => void }) => {
+      options.preflightResult?.(true);
+      throw new Error("agent loop failed");
+    },
+    dispose: async () => {},
+  };
+
+  await assert.rejects(
+    () => adapter.prompt("hi"),
+    (err: unknown) => {
+      assert.equal((err as Error).message, "agent loop failed");
+      assert.equal((err as { promptAccepted?: boolean }).promptAccepted, true);
+      return true;
+    },
+  );
+  await adapter.dispose();
+});
+
+test("S6-01: inner preflight accepted 且成功 → accepted:true 且 onPreflight(true) 实时通知", async () => {
+  const cwd = makeTmpDir("yuanyi-cwd-");
+  const agentDir = makeTmpDir("yuanyi-agent-");
+  const adapter = await PiRuntimeAdapter.create({ cwd, agentDir });
+
+  (adapter as unknown as { inner: unknown }).inner = {
+    prompt: async (_text: string, options: { preflightResult?: (ok: boolean) => void }) => {
+      options.preflightResult?.(true);
+    },
+    dispose: async () => {},
+  };
+
+  const preflightSignals: boolean[] = [];
+  const ack = await adapter.prompt("hi", undefined, (accepted) => preflightSignals.push(accepted));
+  assert.equal(ack.accepted, true);
+  assert.equal(ack.sessionId, adapter.sessionId);
+  assert.deepEqual(preflightSignals, [true], "onPreflight 必须在 preflight accepted 时实时通知");
+  await adapter.dispose();
+});

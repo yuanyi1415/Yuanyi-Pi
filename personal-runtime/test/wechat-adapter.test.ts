@@ -11,6 +11,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { MetadataStore, channelKey } from "../src/metadata/store";
 import { RuntimeManager } from "../src/runtime/manager";
 import { SessionRouter } from "../src/session/router";
@@ -45,7 +46,7 @@ function setup() {
     runtimeManager,
     metadata,
   });
-  return { sent, metadata, runtimeManager, router, adapter, cwd };
+  return { sent, metadata, runtimeManager, router, adapter, cwd, sessionDir };
 }
 
 const CONTACT = "wx-contact-001";
@@ -77,6 +78,23 @@ test("已绑定消息：继续同一 Session（不新建）", async () => {
   assert.equal(binding2.activeSessionId, binding1.activeSessionId, "继续同一 Session");
   const sessions = Object.keys(metadata.getSessionMetaAll());
   assert.equal(sessions.length, 1, "只创建了一个 Session");
+});
+
+test("删除已绑定会话后：下一条消息自动新建并重建 binding", async () => {
+  const { cwd, sessionDir, metadata, router, adapter } = setup();
+  const session = SessionManager.create(cwd, sessionDir);
+  session.appendMessage({ role: "user", content: [{ type: "text", text: "第一条" }] } as never);
+  session.appendMessage({ role: "assistant", content: [{ type: "text", text: "回复" }] } as never);
+  const oldSessionId = session.getSessionId();
+  metadata.setBinding("wechat", channelKey("wechat", CONTACT), { activeSessionId: oldSessionId });
+
+  await router.deleteSession(oldSessionId);
+  assert.equal(metadata.getBinding("wechat", channelKey("wechat", CONTACT)), undefined);
+
+  await adapter.handleInbound({ channelType: "wechat", contactId: CONTACT, messageId: "m2", text: "删除后的下一条", receivedAt: Date.now() });
+  const binding = metadata.getBinding("wechat", channelKey("wechat", CONTACT));
+  assert.ok(binding, "binding 已重建");
+  assert.notEqual(binding.activeSessionId, oldSessionId, "绑定到新 Session");
 });
 
 test("/新会话：创建新 Session 并切换 binding", async () => {

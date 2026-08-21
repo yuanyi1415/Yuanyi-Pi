@@ -9,6 +9,8 @@ import {
   gatewayCommand,
   gatewayCreateSession,
   gatewayEnabled,
+  legacyRuntimeEnabled,
+  runtimeUnavailableResponse,
 } from "@/lib/personal-gateway";
 
 const THINKING_LEVELS = new Set<ThinkingLevel>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -30,15 +32,16 @@ function promptRejected(code: string, message: string) {
 }
 
 // POST /api/agent/new  body: { cwd?: string; type: string; message?: string; ... }
-// Spawns a brand-new pi session. Most calls immediately send the first command;
-// type:"ensure_session" only creates the runtime so clients can query commands.
+// Prepares a brand-new runtime without persisting Session/Project metadata;
+// the first prompt commits the pending draft on the Gateway side.
 // Returns pi's real session id plus the model/thinking state selected at startup.
 //
 // Personal Gateway 模式（PERSONAL_GATEWAY_ENABLED=1）：
-// - cwd 可选：缺省 → 无项目 Session（projectDirectory=null → neutralCwd）
+// - cwd 可选：缺省 → 话题 Session（projectDirectory=null → 独立 workspace）
 // - 通过 Personal Gateway 创建并执行首条命令（Runtime Ownership 在 Personal Runtime）
 export async function POST(req: Request) {
   if (gatewayEnabled()) return gatewayNewSession(req);
+  if (!legacyRuntimeEnabled()) return runtimeUnavailableResponse();
   return legacyNewSession(req);
 }
 
@@ -71,6 +74,7 @@ async function gatewayNewSession(req: Request) {
 
     const descriptor = await gatewayCreateSession({
       projectDirectory: cwd ? cwd : null,
+      projectDisplayName: typeof command.projectDisplayName === "string" ? command.projectDisplayName : null,
       ...(provider && modelId ? { model: { provider, modelId } } : {}),
     });
     const sessionId = descriptor.sessionId;

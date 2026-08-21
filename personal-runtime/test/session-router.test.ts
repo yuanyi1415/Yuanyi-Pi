@@ -6,7 +6,7 @@
  * 已有 Session 恢复、list 合并与 orphan 标记。
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -21,6 +21,7 @@ function tmp() {
     agentDir: mkdtempSync(join(tmpdir(), "sr-agent-")),
     sessionDir: mkdtempSync(join(tmpdir(), "sr-sess-")),
     neutralCwd: mkdtempSync(join(tmpdir(), "sr-neutral-")),
+    workspaceRoot: mkdtempSync(join(tmpdir(), "sr-workspaces-")),
     metadataFile: join(mkdtempSync(join(tmpdir(), "sr-meta-")), "metadata.json"),
   };
 }
@@ -40,6 +41,7 @@ function makeRouter(t: ReturnType<typeof tmp>) {
     runtimeManager,
     metadata,
     neutralCwd: t.neutralCwd,
+    workspaceRoot: t.workspaceRoot,
     sessionDir: t.sessionDir,
   });
   return { metadata, runtimeManager, router };
@@ -83,12 +85,13 @@ test("MetadataStore: 损坏文件容错（不抛错，保持空结构）", () =>
 
 // ---------- SessionRouter ----------
 
-test("SessionRouter: resolveNew 无项目 → runtimeCwd=neutralCwd，metadata 落盘", async () => {
+test("SessionRouter: resolveNew 无项目 → 每个 Session 使用独立 workspace，metadata 落盘", async () => {
   const t = tmp();
   const { router } = makeRouter(t);
   const desc = await router.resolve({ type: "new", input: { projectDirectory: null } });
   assert.equal(desc.projectDirectory, null);
-  assert.equal(desc.runtimeCwd, t.neutralCwd);
+  assert.notEqual(desc.runtimeCwd, t.neutralCwd);
+  assert.match(desc.runtimeCwd, new RegExp(`${t.workspaceRoot}/[^/]+$`));
   assert.equal(desc.originChannel, "web");
   assert.equal(desc.running, true);
 });
@@ -100,9 +103,27 @@ test("SessionRouter: resolveNew 有项目 → runtimeCwd=projectDirectory", asyn
     type: "new",
     input: { projectDirectory: t.cwd, originChannel: "wechat" },
   });
-  assert.equal(desc.projectDirectory, t.cwd);
-  assert.equal(desc.runtimeCwd, t.cwd);
+  assert.equal(desc.projectDirectory, realpathSync(t.cwd));
+  assert.equal(desc.runtimeCwd, realpathSync(t.cwd));
   assert.equal(desc.originChannel, "wechat");
+});
+
+test("SessionRouter: prepareNew 不落盘可见 Session，commit 后才进入列表", async () => {
+  const t = tmp();
+  const { metadata, router, runtimeManager } = makeRouter(t);
+  const desc = await router.prepareNew({ projectDirectory: t.cwd, projectDisplayName: "Demo" });
+  const canonical = realpathSync(t.cwd);
+
+  assert.equal(metadata.getSessionMeta(desc.sessionId), undefined);
+  assert.equal(metadata.getProject(canonical), undefined);
+  assert.equal((await router.list()).some((session) => session.sessionId === desc.sessionId), false);
+
+  router.commitPrepared(desc.sessionId);
+  assert.equal(metadata.getSessionMeta(desc.sessionId)?.projectDirectory, canonical);
+  assert.equal(metadata.getProject(canonical)?.displayName, "Demo");
+  router.finalizePrepared(desc.sessionId);
+  assert.equal((await router.list()).some((session) => session.sessionId === desc.sessionId), true);
+  await runtimeManager.shutdown();
 });
 
 test("SessionRouter: resolveExisting 恢复已持久化 Session，sessionId 不变", async () => {
@@ -115,6 +136,69 @@ test("SessionRouter: resolveExisting 恢复已持久化 Session，sessionId 不�
   assert.equal(desc.runtimeCwd, t.cwd);
   assert.equal(desc.running, true);
   assert.ok(existsSync(sessionFile));
+});
+
+test("SessionRouter: 删除会话清理所有指向它的微信 binding", async () => {
+  const t = tmp();
+  const { sessionFile, sessionId } = makeSessionFile(t.cwd, t.sessionDir);
+  const { metadata, router } = makeRouter(t);
+  const firstKey = channelKey("wechat", "contact-1");
+  const secondKey = channelKey("wechat", "contact-2");
+  const otherKey = channelKey("wechat", "contact-3");
+  metadata.setBinding("wechat", firstKey, { activeSessionId: sessionId });
+  metadata.setBinding("wechat", secondKey, { activeSessionId: sessionId });
+  metadata.setBinding("wechat", otherKey, { activeSessionId: "other-session" });
+
+  await router.deleteSession(sessionId);
+
+  assert.equal(existsSync(sessionFile), false);
+  assert.equal(metadata.getBinding("wechat", firstKey), undefined);
+  assert.equal(metadata.getBinding("wechat", secondKey), undefined);
+  assert.equal(metadata.getBinding("wechat", otherKey)?.activeSessionId, "other-session");
+});
+
+test("SessionRouter: removeProject 有 Session 引用 → 拒绝；无引用 → 删除且不被自动发现复活", async () => {
+  const t = tmp();
+  const { metadata, router } = makeRouter(t);
+  const canonical = realpathSync(t.cwd);
+
+  // 落盘 Session + metadata 项目引用（等价于已正式化的项目 Session）
+  const { sessionId } = makeSessionFile(t.cwd, t.sessionDir);
+  metadata.setSessionMeta(sessionId, { projectDirectory: canonical, originChannel: "web" });
+  metadata.upsertProject(canonical, "Demo");
+  assert.ok(metadata.getProject(canonical), "项目已注册");
+
+  // 有引用 → 拒绝删除（含 raw 路径调用也应命中 canonical 存储）
+  assert.throws(() => router.removeProject(t.cwd), /project in use/);
+  assert.throws(() => router.removeProject(canonical), /project in use/);
+  assert.ok(metadata.getProject(canonical), "Registry 保持不变");
+
+  // 删除最后一个关联 Session 后 → 可删除，且 listProjects 不复活
+  await router.deleteSession(sessionId);
+  router.removeProject(t.cwd);
+  assert.equal(metadata.getProject(canonical), undefined, "项目已删除");
+  assert.equal(
+    (await router.listProjects()).some((p) => p.path === canonical),
+    false,
+    "刷新后项目不重新出现",
+  );
+
+  // 不存在的项目 → project not found
+  assert.throws(() => router.removeProject("/no/such/project"), /project not found/);
+});
+
+test("SessionRouter: removeProject 无引用项目（raw 路径注册）→ 删除成功", async () => {
+  const t = tmp();
+  const { metadata, router } = makeRouter(t);
+  metadata.upsertProject(t.cwd, "Lonely");
+
+  router.removeProject(t.cwd);
+  assert.equal(metadata.getProject(t.cwd), undefined);
+  assert.equal(
+    (await router.listProjects()).some((p) => p.path === t.cwd),
+    false,
+    "刷新后项目不重新出现",
+  );
 });
 
 test("SessionRouter: list 合并 Pi Session + metadata + running；orphan 标记", async () => {

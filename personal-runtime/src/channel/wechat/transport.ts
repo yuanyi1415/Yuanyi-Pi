@@ -134,30 +134,10 @@ export class WeChatTransport {
     this.client.setToken(this.token);
 
     if (!this.token) {
-      const result = await qrLogin(this.client, this.baseUrl, {
-        ...(this.config.qrLogin ?? {}),
-      });
-      if (!result.ok || !result.token) {
-        this.running = false;
-        if (result.reason !== "already_bound" && result.reason !== "cancelled") {
-          throw new Error(`WeChat QR login failed: ${result.reason}`);
-        }
-        throw new Error(`WeChat login failed: ${result.reason ?? "no token"}`);
-      }
-      this.token = result.token;
-      this.client.setToken(this.token);
-      if (result.baseUrl) {
-        this.baseUrl = result.baseUrl;
-        this.client = new IlinkClient({
-          baseUrl: this.baseUrl,
-          pollTimeout: this.config.pollTimeout ?? 35,
-        });
-        this.client.setToken(this.token);
-      }
-      this.stateStore.save(
-        this.token, this.getUpdatesBuf, Object.fromEntries(this.contextTokens),
-        this.baseUrl, "",
-      );
+      // 无 token：不自动扫码阻塞启动（由 WebUI 连接流程驱动，见 WechatChannelController）
+      // CLI 登录（scripts/wechat-login.ts）仍可显式触发扫码
+      this.running = false;
+      return;
     }
 
     await this.client.notifyLifecycle("start");

@@ -29,9 +29,14 @@ export async function sendAgentCommand<T = unknown>(
   sessionId: string,
   command: Record<string, unknown>,
 ): Promise<T> {
+  const requestId = crypto.randomUUID();
   const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Yuanyi-Request-Id": requestId,
+      "X-Yuanyi-T0": String(Date.now()),
+    },
     body: JSON.stringify(command),
   });
   const body = (await res.json().catch(() => ({}))) as {
