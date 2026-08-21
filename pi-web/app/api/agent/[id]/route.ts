@@ -51,9 +51,11 @@ async function gatewayPost(req: Request, id: string) {
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     const status = (error as { status?: number }).status ?? 500;
+    const gatewayCode = (error as { code?: string }).code;
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
-      ...(commandType === "prompt" && !promptAccepted
+      ...(gatewayCode ? { code: gatewayCode, accepted: false } : {}),
+      ...(commandType === "prompt" && !promptAccepted && !gatewayCode
         ? { code: "prompt_rejected", accepted: false }
         : {}),
     }, { status });
@@ -73,7 +75,9 @@ async function gatewayGet(_req: Request, id: string) {
     if ((error as { status?: number }).status === 404) {
       return NextResponse.json({ running: false });
     }
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    // Gateway 不可达 → 透传 503 runtime_unavailable（fail-closed，S6-05）
+    const status = (error as { status?: number }).status ?? 500;
+    return NextResponse.json({ error: String(error) }, { status });
   }
 }
 

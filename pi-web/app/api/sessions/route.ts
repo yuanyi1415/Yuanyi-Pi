@@ -45,9 +45,10 @@ async function gatewayList(req: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
     return NextResponse.json(
       { error: String(error) },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
+      { status, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

@@ -115,12 +115,16 @@ async function gatewayNewSession(req: Request) {
       thinkingLevel: state.thinkingLevel,
     });
   } catch (error) {
+    const status = (error as { status?: number }).status ?? 500;
+    const gatewayCode = (error as { code?: string }).code;
     return NextResponse.json({
       error: error instanceof Error ? error.message : String(error),
-      ...(commandType === "prompt" && !promptAccepted
+      // Gateway 明确错误（runtime_unavailable 等）优先；否则按 prompt 受理判定
+      ...(gatewayCode ? { code: gatewayCode, accepted: false } : {}),
+      ...(commandType === "prompt" && !promptAccepted && !gatewayCode
         ? { code: "prompt_rejected", accepted: false }
         : {}),
-    }, { status: 500 });
+    }, { status });
   }
 }
 

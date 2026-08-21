@@ -44,10 +44,23 @@ export interface GatewayProject {
 }
 
 async function gatewayFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${GATEWAY_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_URL}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch {
+    // Personal Gateway 不可达（fail-closed，S6-05）：统一为 503 runtime_unavailable，
+    // 路由 catch 透传 error.status → 生产环境不得 fallback 到 Web 自持 Runtime。
+    const err = new Error("Personal Gateway is unreachable") as Error & {
+      status?: number;
+      code?: string;
+    };
+    err.status = 503;
+    err.code = "runtime_unavailable";
+    throw err;
+  }
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
   if (!res.ok) {

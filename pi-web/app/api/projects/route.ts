@@ -19,7 +19,7 @@ export async function GET() {
       })),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: (error as { status?: number }).status ?? 500 });
   }
 }
 
@@ -30,7 +30,7 @@ export async function PATCH(req: Request) {
     if (!body.projectDirectory || !body.displayName?.trim()) return NextResponse.json({ error: "projectDirectory and displayName are required" }, { status: 400 });
     return NextResponse.json(await gatewayRenameProject(body.projectDirectory, body.displayName.trim()));
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: (error as { status?: number }).status ?? 500 });
   }
 }
 
@@ -41,6 +41,6 @@ export async function DELETE(req: Request) {
     if (!body.projectDirectory) return NextResponse.json({ error: "projectDirectory is required" }, { status: 400 });
     return NextResponse.json(await gatewayRemoveProject(body.projectDirectory));
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: (error as { status?: number }).status ?? 500 });
   }
 }
